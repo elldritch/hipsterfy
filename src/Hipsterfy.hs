@@ -1,11 +1,8 @@
 module Hipsterfy (runServer, Options (..)) where
 
-import Control.Lens ((.~))
-import Data.Text.Encoding.Base64 (encodeBase64)
 import Database.PostgreSQL.Simple (Connection, Only (Only), connectPostgreSQL, execute, query_)
-import Network.HTTP.Types (renderSimpleQuery)
+import Hipsterfy.Spotify (scopeUserTopRead, scopeUserFollowRead, scopeUserLibraryRead, Scope, SpotifyApp(SpotifyApp), exchangeToken, redirectURI)
 import Network.Wai.Handler.Warp (defaultSettings, setPort)
-import Network.Wreq (FormParam ((:=)), defaults, header, postWith)
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
@@ -33,13 +30,16 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
     S.Options {verbose = 0, settings = defaultSettings & setPort port}
     $ app conn
   where
-    -- TODO: how is there no standard library for joining URLs?
-    spotifyAuthURL = "https://accounts.spotify.com/authorize"
-    spotifyTokenURL = "https://accounts.spotify.com/api/token"
+    address :: Text
     address = host `mappend` case port of
       80 -> ""
       other -> ":" `mappend` show other
-
+    callbackURL :: Text
+    callbackURL = address <> "/authorize/callback"
+    spotifyApp :: SpotifyApp
+    spotifyApp = SpotifyApp clientID clientSecret callbackURL
+    spotifyScopes :: [Scope]
+    spotifyScopes = [scopeUserLibraryRead, scopeUserFollowRead, scopeUserTopRead]
     app :: Connection -> ScottyM ()
     app conn = do
       -- Home page. Check cookies to see if logged in.
@@ -54,32 +54,14 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
         friendCode <- liftIO $ randomWord randomASCII 20
         oauthSecret <- liftIO $ randomWord randomASCII 20
         _ <- liftIO $ execute conn "INSERT INTO hipsterfy_user (friend_code, oauth2_secret) VALUES (?, ?)" (friendCode, oauthSecret)
-        let qs =
-              decodeUtf8 $
-                renderSimpleQuery
-                  True
-                  [ ("client_id", encodeUtf8 clientID),
-                    ("response_type", "code"),
-                    ("redirect_uri", (encodeUtf8 address) <> "/authorize/callback"),
-                    ("state", encodeUtf8 oauthSecret),
-                    ("scope", "user-library-read user-top-read user-follow-read")
-                  ]
-        S.redirect $ spotifyAuthURL <> qs
+        S.redirect $ redirectURI spotifyApp spotifyScopes (encodeUtf8 oauthSecret)
 
       -- Authorization callback. Populate a user's Spotify information based on the callback. Set cookies to logged in. Redirect to home page.
       S.get "/authorize/callback" $ do
-        code <- S.param "code" :: ActionM Text
+        code <- S.param "code" :: ActionM ByteString
         oauthSecret <- S.param "state" :: ActionM Text
-        res <-
-          liftIO $
-            postWith
-              (defaults & header "Authorization" .~ ["Basic " <> encodeUtf8 (encodeBase64 $ clientID <> ":" <> clientSecret)])
-              spotifyTokenURL
-              [ "grant_type" := ("authorization_code" :: Text),
-                "code" := code,
-                "redirect_uri" := address <> "/authorize/callback"
-              ]
-        print res
+        creds <- exchangeToken spotifyApp code
+        print creds
         -- TODO: save access token and set cookies.
         S.redirect "/"
 
