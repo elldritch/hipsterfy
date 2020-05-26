@@ -20,5 +20,5 @@ Figure out which of your Spotify artist preferences are most hipster.
 
 ```
 sudo docker run --name hipsterfy-db -p 5432:5432 -e POSTGRES_USER=hipsterfy -e POSTGRES_PASSWORD=hunter2 postgres:12.3-alpine
-cabal run hipsterfy -- --port 8000 --db 'postgresql://hipsterfy:hunter2@localhost:5432'
+cabal-fmt --inplace hipsterfy.cabal && cabal run hipsterfy -- --host http://localhost --port 8000 --db 'postgresql://hipsterfy:hunter2@localhost:5432' --client_id XXXX --client_secret XXXX
 ```

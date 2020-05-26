@@ -16,7 +16,8 @@ import Web.Scotty (ActionM, ScottyM, scottyOpts)
 import qualified Web.Scotty as S
 
 data Options = Options
-  { port :: Int,
+  { host :: Text,
+    port :: Int,
     pgConn :: ByteString,
     clientID :: Text,
     clientSecret :: Text
@@ -24,14 +25,21 @@ data Options = Options
   deriving (Show)
 
 runServer :: Options -> IO ()
-runServer (Options {port, pgConn, clientID, clientSecret}) = do
+runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
   conn <- connectPostgreSQL pgConn
 
-  putStrLn "Starting server."
+  putStrLn $ "Starting server at: " `mappend` (show address)
   scottyOpts
     S.Options {verbose = 0, settings = defaultSettings & setPort port}
     $ app conn
   where
+    -- TODO: how is there no standard library for joining URLs?
+    spotifyAuthURL = "https://accounts.spotify.com/authorize"
+    spotifyTokenURL = "https://accounts.spotify.com/api/token"
+    address = host `mappend` case port of
+      80 -> ""
+      other -> ":" `mappend` show other
+
     app :: Connection -> ScottyM ()
     app conn = do
       -- Home page. Check cookies to see if logged in.
@@ -52,11 +60,11 @@ runServer (Options {port, pgConn, clientID, clientSecret}) = do
                   True
                   [ ("client_id", encodeUtf8 clientID),
                     ("response_type", "code"),
-                    ("redirect_uri", "http://localhost:8000/authorize/callback"),
+                    ("redirect_uri", (encodeUtf8 address) <> "/authorize/callback"),
                     ("state", encodeUtf8 oauthSecret),
                     ("scope", "user-library-read user-top-read user-follow-read")
                   ]
-        S.redirect $ "https://accounts.spotify.com/authorize" <> qs
+        S.redirect $ spotifyAuthURL <> qs
 
       -- Authorization callback. Populate a user's Spotify information based on the callback. Set cookies to logged in. Redirect to home page.
       S.get "/authorize/callback" $ do
@@ -66,10 +74,10 @@ runServer (Options {port, pgConn, clientID, clientSecret}) = do
           liftIO $
             postWith
               (defaults & header "Authorization" .~ ["Basic " <> encodeUtf8 (encodeBase64 $ clientID <> ":" <> clientSecret)])
-              "https://accounts.spotify.com/api/token"
+              spotifyTokenURL
               [ "grant_type" := ("authorization_code" :: Text),
                 "code" := code,
-                "redirect_uri" := ("http://localhost:8000/authorize/callback" :: Text)
+                "redirect_uri" := address <> "/authorize/callback"
               ]
         print res
         -- TODO: save access token and set cookies.
