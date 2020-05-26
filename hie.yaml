@@ -1,0 +1,6 @@
+cradle:
+  cabal:
+    - path: "./app"
+      component: "exe:hipsterfy"
+    - path: "./src"
+      component: "lib:hipsterfy"
