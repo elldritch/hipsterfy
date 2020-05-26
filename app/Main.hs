@@ -16,13 +16,7 @@ import Options.Applicative
     strOption,
   )
 
-import Hipsterfy (runServer, ServerOptions(ServerOptions))
-
-data Options = Options
-  { port :: Int,
-    pgConn :: Text
-  }
-  deriving (Show)
+import Hipsterfy (runServer, Options(Options))
 
 opts :: ParserInfo Options
 opts =
@@ -34,9 +28,10 @@ opts =
       Options
         <$> option auto (long "port" <> short 'p')
         <*> strOption (long "db")
+        <*> strOption (long "client_id")
+        <*> strOption (long "client_secret")
 
 main :: IO ()
 main = do
   options <- execParser opts
-  print options
-  runServer $ ServerOptions (port options) (encodeUtf8 $ pgConn options)
+  runServer options

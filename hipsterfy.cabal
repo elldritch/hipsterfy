@@ -20,11 +20,16 @@ common lang
 library
   import:          lang
   build-depends:
+    , base64             ==0.4.2
     , blaze-html         ==0.9.1.2
+    , http-types         ==0.12.3
+    , lens               ==4.19.2
     , postgresql-simple  ==0.6.2
+    , random-strings     ==0.1.1.0
     , relude             ==0.7.0.0
     , scotty             ==0.12
     , warp               ==3.3.11
+    , wreq               ==0.5.3.2
 
   -- cabal-fmt: expand src
   exposed-modules: Hipsterfy
