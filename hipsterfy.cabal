@@ -35,12 +35,14 @@ library
     , scotty-cookie      ==0.1.0.3
     , text               ==1.2.4.0
     , time               ==1.9.3
+    , wai-extra          ==3.0.29.2
     , warp               ==3.3.11
     , wreq               ==0.5.3.2
 
   -- cabal-fmt: expand src
   exposed-modules:
     Hipsterfy
+    Hipsterfy.Pages
     Hipsterfy.Session
     Hipsterfy.Spotify
 

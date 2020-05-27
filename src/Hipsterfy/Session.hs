@@ -1,4 +1,12 @@
-module Hipsterfy.Session (getSpotifyUser, createUser, getSession, startSession, User (..)) where
+module Hipsterfy.Session
+  ( getSpotifyUser,
+    createUser,
+    getSession,
+    startSession,
+    endSession,
+    User (..),
+  )
+where
 
 import Data.Text (pack)
 import Data.Time (secondsToDiffTime)
@@ -8,7 +16,7 @@ import Hipsterfy.Spotify (SpotifyCredentials (..), SpotifyUserID)
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
 import Web.Cookie (SetCookie (..), defaultSetCookie)
-import Web.Scotty.Cookie (getCookie, setCookie)
+import Web.Scotty.Cookie (deleteCookie, getCookie, setCookie)
 import Web.Scotty.Trans (ActionT, ScottyError)
 
 type UserID = Int
@@ -149,3 +157,15 @@ startSession conn userID = do
           setCookieMaxAge = Just $ secondsToDiffTime $ 60 * 60 * 24 * 365 * 2
         }
     )
+
+endSession :: (MonadIO m, ScottyError e) => Connection -> ActionT e m ()
+endSession conn = do
+  cookie <- getCookie hipsterfyCookieName
+  case cookie of
+    Nothing -> return ()
+    Just cookieSecret -> do
+      -- Find and delete session in the database.
+      void $ liftIO $ execute conn "DELETE FROM hipsterfy_user_session WHERE cookie_secret = ?" (Only cookieSecret)
+
+      -- Delete session cookies.
+      deleteCookie hipsterfyCookieName
