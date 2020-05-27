@@ -24,12 +24,15 @@ library
     , aeson              ==1.5.1.0
     , base64             ==0.4.2
     , blaze-html         ==0.9.1.2
+    , cookie             ==0.4.5
     , http-types         ==0.12.3
     , lens               ==4.19.2
+    , mtl                ==2.2.2
     , postgresql-simple  ==0.6.2
     , random-strings     ==0.1.1.0
     , relude             ==0.7.0.0
     , scotty             ==0.12
+    , scotty-cookie      ==0.1.0.3
     , text               ==1.2.4.0
     , time               ==1.9.3
     , warp               ==3.3.11
@@ -38,6 +41,7 @@ library
   -- cabal-fmt: expand src
   exposed-modules:
     Hipsterfy
+    Hipsterfy.Session
     Hipsterfy.Spotify
 
   hs-source-dirs:  src

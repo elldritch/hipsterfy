@@ -1,10 +1,11 @@
 module Hipsterfy (runServer, Options (..)) where
 
-import Database.PostgreSQL.Simple (Connection, Only (Only), connectPostgreSQL, execute, query_)
-import Hipsterfy.Spotify (scopeUserTopRead, scopeUserFollowRead, scopeUserLibraryRead, Scope, SpotifyApp(SpotifyApp), exchangeToken, redirectURI)
+import Control.Monad.Except (liftEither, throwError)
+import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
+import Hipsterfy.Session (User (..), createUser, getSession, getSpotifyUser, startSession)
+import Hipsterfy.Spotify (Scope, SpotifyApp (SpotifyApp), exchangeToken, getSpotifyUserID, redirectURI, scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
 import Network.Wai.Handler.Warp (defaultSettings, setPort)
 import Relude
-import Test.RandomStrings (randomASCII, randomWord)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Blaze.Html5 ((!), Html, docTypeHtml)
 import qualified Text.Blaze.Html5 as H
@@ -46,23 +47,43 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
       -- If not logged in, prompt to authorize.
       -- If logged in, provide friend code input.
       S.get "/" $ do
-        -- TODO: check cookies, provide logged in view.
-        S.html $ renderHtml homepage
+        user <- getSession conn
+        case user of
+          Just u -> undefined
+          Nothing -> S.html $ renderHtml login
 
       -- Authorization redirect. Generate a new user's OAuth secret and friend code. Redirect to Spotify.
       S.get "/authorize" $ do
-        friendCode <- liftIO $ randomWord randomASCII 20
-        oauthSecret <- liftIO $ randomWord randomASCII 20
-        _ <- liftIO $ execute conn "INSERT INTO hipsterfy_user (friend_code, oauth2_secret) VALUES (?, ?)" (friendCode, oauthSecret)
-        S.redirect $ redirectURI spotifyApp spotifyScopes (encodeUtf8 oauthSecret)
+        url <- redirectURI spotifyApp conn spotifyScopes
+        S.redirect url
 
       -- Authorization callback. Populate a user's Spotify information based on the callback. Set cookies to logged in. Redirect to home page.
       S.get "/authorize/callback" $ do
-        code <- S.param "code" :: ActionM ByteString
-        oauthSecret <- S.param "state" :: ActionM Text
-        creds <- exchangeToken spotifyApp code
-        print creds
-        -- TODO: save access token and set cookies.
+        result <- runExceptT $ do
+          -- If a session is already set, then ignore this request.
+          session <- lift $ getSession conn
+          when (isJust session) $ throwError "session already set"
+
+          -- Obtain access tokens.
+          code <- lift $ (S.param "code" :: ActionM ByteString)
+          oauthSecret <- lift $ (S.param "state" :: ActionM ByteString)
+          creds <- liftEither =<< exchangeToken spotifyApp conn code oauthSecret
+
+          -- Check whether this user already exists. If it doesn't, then create a new user.
+          spotifyUserID <- liftIO $ getSpotifyUserID creds
+          spotifyUser <- lift $ getSpotifyUser conn spotifyUserID
+          user <- case spotifyUser of
+            Just u -> do
+              return (userID u)
+            Nothing -> do
+              newUser <- lift $ createUser conn spotifyUserID creds
+              return (userID newUser)
+
+          -- Create a new session.
+          lift $ startSession conn user
+
+        print result
+        -- Redirect to dashboard.
         S.redirect "/"
 
       -- Compare your artists against a friend code. Must be logged in.
@@ -73,12 +94,9 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
       S.get "/logout" $ do
         undefined
 
-      S.get "/debug" $ do
-        [Only i] <- liftIO $ (query_ conn "SELECT COUNT(*) FROM hipsterfy_user" :: IO [Only Int])
-        S.text $ show i
-
-homepage :: Html
-homepage = docTypeHtml $ do
+-- TODO: factor out pages.
+login :: Html
+login = docTypeHtml $ do
   H.head
     $ H.title
     $ "Hipsterfy"
