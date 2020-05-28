@@ -2,14 +2,15 @@ module Hipsterfy (runServer, Options (..)) where
 
 import Control.Monad.Except (liftEither, throwError)
 import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
-import Hipsterfy.Session (endSession, User (..), createUser, getSession, getSpotifyUser, startSession)
+import Hipsterfy.Pages (accountPage, comparePage, loginPage)
+import Hipsterfy.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify (Scope, SpotifyApp (SpotifyApp), exchangeToken, getSpotifyUserID, redirectURI, scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
-import Hipsterfy.Pages (accountPage, loginPage)
+import Hipsterfy.User (User (..), createUser, getUserBySpotifyID)
 import Network.Wai.Handler.Warp (defaultSettings, setPort)
-import Relude
-import Web.Scotty (ActionM, ScottyM, scottyOpts, middleware, html, redirect, param)
-import qualified Web.Scotty as S
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
+import Relude
+import Web.Scotty (ActionM, ScottyM, html, middleware, param, redirect, scottyOpts)
+import qualified Web.Scotty as S
 
 data Options = Options
   { host :: Text,
@@ -49,7 +50,7 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
       S.get "/" $ do
         user <- getSession conn
         case user of
-          Just u -> html $ accountPage
+          Just u -> html $ accountPage u
           Nothing -> html $ loginPage
 
       -- Authorization redirect. Generate a new user's OAuth secret and friend code. Redirect to Spotify.
@@ -66,18 +67,18 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
 
           -- Obtain access tokens.
           code <- lift $ (param "code" :: ActionM ByteString)
-          oauthSecret <- lift $ (param "state" :: ActionM ByteString)
-          creds <- liftEither =<< exchangeToken spotifyApp conn code oauthSecret
+          oauthState <- lift $ (param "state" :: ActionM ByteString)
+          creds <- liftEither =<< exchangeToken spotifyApp conn code oauthState
 
           -- Check whether this user already exists. If it doesn't, then create a new user.
           spotifyUserID <- liftIO $ getSpotifyUserID creds
-          spotifyUser <- lift $ getSpotifyUser conn spotifyUserID
+          spotifyUser <- lift $ getUserBySpotifyID conn spotifyUserID
           user <- case spotifyUser of
             Just u -> do
-              return (userID u)
+              return $ userID u
             Nothing -> do
               newUser <- lift $ createUser conn spotifyUserID creds
-              return (userID newUser)
+              return $ userID newUser
 
           -- Create a new session.
           lift $ startSession conn user
@@ -87,8 +88,11 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
         redirect "/"
 
       -- Compare your artists against a friend code. Must be logged in.
-      S.get "/compare" $ do
-        undefined
+      S.post "/compare" $ do
+        friendCode <- param "friend-code" :: ActionM Text
+        print friendCode
+        -- query conn "SELECT " (Only _)
+        html comparePage
 
       -- Clear logged in cookies.
       S.get "/logout" $ do

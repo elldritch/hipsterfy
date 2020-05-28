@@ -12,9 +12,9 @@ Figure out which of your Spotify artist preferences are most hipster.
 ## Implementation
 
 1. Get user's followed artists: https://developer.spotify.com/documentation/web-api/reference/follow/get-followed/
-2. Get user's saved tracks: https://developer.spotify.com/documentation/web-api/reference/library/get-users-saved-tracks/
-3. Get Chartmetric artist ID from Spotify artist ID: https://api.chartmetric.com/apidoc/#api-Artist-getArtistIDs
-4. Get Spotify monthly listeners from Chartmetric artist ID: https://api.chartmetric.com/apidoc/#api-Artist-GetArtistMetadata
+2. Get user's saved tracks: https://developer.spotify.com/documentation/web-api/reference/library/get-users-saved-tracks/data
+3. Get anonymous Spotify bearer token: https://open.spotify.com/get_access_token?reason=transport&productType=web_player
+4. Get Spotify artist insights: `curl 'https://spclient.wg.spotify.com/open-backend-2/v1/artists/62GoYifV4njTdvS8lD2yYT' -H 'authorization: Bearer XXXX`
 
 ## Development
 

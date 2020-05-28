@@ -45,6 +45,7 @@ library
     Hipsterfy.Pages
     Hipsterfy.Session
     Hipsterfy.Spotify
+    Hipsterfy.User
 
   hs-source-dirs:  src
 

@@ -1,15 +1,17 @@
 module Hipsterfy.Spotify
-  ( redirectURI,
-    exchangeToken,
-    SpotifyApp (..),
+  ( SpotifyApp (..),
     SpotifyCredentials (..),
+    OAuthState,
+    redirectURI,
+    exchangeToken,
     Scope,
     scopeUserFollowRead,
     scopeUserLibraryRead,
     scopeUserTopRead,
-    getSpotifyUserID,
     SpotifyUserID,
-    OAuthSecret,
+    getSpotifyUserID,
+    SpotifyArtist (..),
+    getSpotifyArtists,
   )
 where
 
@@ -62,7 +64,7 @@ scopeUserFollowRead = Scope "user-follow-read"
 scopeUserTopRead :: Scope
 scopeUserTopRead = Scope "user-top-read"
 
-type OAuthSecret = ByteString
+type OAuthState = ByteString
 
 redirectURI :: (MonadIO m) => SpotifyApp -> Connection -> [Scope] -> m LT.Text
 redirectURI app conn scopes = do
@@ -71,7 +73,7 @@ redirectURI app conn scopes = do
   void $ liftIO $ execute conn "INSERT INTO spotify_oauth_request (oauth2_secret) VALUES (?)" $ Only oauthState
   return url
 
-redirectURI' :: SpotifyApp -> [Scope] -> OAuthSecret -> LT.Text
+redirectURI' :: SpotifyApp -> [Scope] -> OAuthState -> LT.Text
 redirectURI' (SpotifyApp {clientID, redirectAddress}) scopes oauthState =
   fromStrict $ spotifyAuthURL <> qs
   where
@@ -103,13 +105,13 @@ data SpotifyTokenResponse = SpotifyTokenResponse
 
 instance FromJSON SpotifyTokenResponse
 
-exchangeToken :: (MonadIO m, MonadFail m) => SpotifyApp -> Connection -> ByteString -> OAuthSecret -> m (Either Text SpotifyCredentials)
+exchangeToken :: (MonadIO m, MonadFail m) => SpotifyApp -> Connection -> ByteString -> OAuthState -> m (Either Text SpotifyCredentials)
 exchangeToken sa conn code oauthState = do
   [Only count] <- liftIO (query conn "SELECT COUNT(*) FROM spotify_oauth_request WHERE oauth2_secret = ?" (Only oauthState) :: IO [Only Int])
   if count == 0
     then return $ Left "invalid OAuth request state"
     else do
-      liftIO $ execute conn "DELETE FROM spotify_oauth_request WHERE oauth2_secret = ?" (Only oauthState)
+      void $ liftIO $ execute conn "DELETE FROM spotify_oauth_request WHERE oauth2_secret = ?" (Only oauthState)
       exchangeToken' sa code >>= return . Right
 
 exchangeToken' :: (MonadIO m) => SpotifyApp -> ByteString -> m SpotifyCredentials
@@ -135,9 +137,9 @@ exchangeToken' (SpotifyApp {clientID, clientSecret, redirectAddress}) code = do
       }
   where
     secret :: ByteString
-    secret = encodeUtf8 (encodeBase64 $ clientID <> ":" <> clientSecret)
+    secret = encodeUtf8 $ encodeBase64 $ clientID <> ":" <> clientSecret
     parseScopes :: Text -> [Scope]
-    parseScopes s = fmap (\w -> Scope (encodeUtf8 w)) $ words s
+    parseScopes s = fmap (Scope . encodeUtf8) $ words s
 
 type SpotifyUserID = Text
 
@@ -161,3 +163,19 @@ getSpotifyUserID (SpotifyCredentials {accessToken}) = do
           (unpack $ spotifyAPIURL <> "/me")
   let body = res ^. responseBody
   return $ spotifyID body
+
+type SpotifyArtistID = Text
+
+data SpotifyArtist = SpotifyArtist
+  { spotifyURL :: Text,
+    name :: Text,
+    followers :: Int,
+    popularity :: Int,
+    monthlyListeners :: Int
+  }
+
+getSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
+getSpotifyArtists creds = undefined
+
+getSpotifyArtistMonthlyListeners :: (MonadIO m) => SpotifyCredentials -> SpotifyArtistID -> m (Maybe Int)
+getSpotifyArtistMonthlyListeners creds artistID = undefined
