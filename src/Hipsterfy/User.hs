@@ -8,7 +8,7 @@ module Hipsterfy.User
   )
 where
 
-import Control.Monad.Except (liftEither)
+import Control.Monad.Except (liftEither, throwError)
 import Data.Text (pack)
 import qualified Data.Text.Lazy as LT
 import Data.Time (getCurrentTime)
@@ -38,14 +38,14 @@ createUser app conn authCode oauthState =
   runExceptT $ do
     -- Validate the OAuth state, then delete that state.
     oauthStateRows <- liftIO (query conn "SELECT oauth2_state FROM spotify_oauth_request WHERE oauth2_state = ?" (Only oauthState) :: IO [Only Text])
-    creds <- liftEither =<< case oauthStateRows of
+    spotifyCredentials <- liftEither =<< case oauthStateRows of
       [_] -> do
         void $ liftIO $ execute conn "DELETE FROM spotify_oauth_request WHERE oauth2_state = ?" (Only oauthState)
         requestAccessTokenFromAuthorizationCode app authCode >>= return . Right
-      _ -> return $ Left "invalid OAuth request state"
+      _ -> throwError "invalid OAuth request state"
 
     -- Exchange OAuth authorization code for credentials.
-    spotifyUserID <- liftIO $ getSpotifyUserID creds
+    spotifyUserID <- liftIO $ getSpotifyUserID spotifyCredentials
 
     -- Construct a user if one doesn't already exist.
     spotifyUser <- lift $ getUserBySpotifyID conn spotifyUserID
@@ -53,17 +53,10 @@ createUser app conn authCode oauthState =
       Just u -> return u
       Nothing -> do
         friendCode <- liftIO $ pack <$> randomWord randomASCII 20
-        userRows <- liftIO $ insertUser friendCode spotifyUserID creds
-        liftEither $ case userRows of
-          [(Only userID)] ->
-            Right $
-              User
-                { userID = userID,
-                  friendCode = friendCode,
-                  spotifyUserID = spotifyUserID,
-                  spotifyCredentials = creds
-                }
-          _ -> Left "impossible: insert of single User returned zero or multiple IDs"
+        userRows <- liftIO $ insertUser friendCode spotifyUserID spotifyCredentials
+        case userRows of
+          [(Only userID)] -> return $ User {userID, friendCode, spotifyUserID, spotifyCredentials}
+          _ -> throwError "impossible: insert of single User returned zero or multiple IDs"
   where
     insertUser :: Text -> Text -> SpotifyCredentials -> IO [Only Int]
     insertUser friendCode spotifyUserID creds =
@@ -112,23 +105,18 @@ getUser conn sql params = do
   return $ case rows of
     [ ( userID,
         friendCode,
-        spotifyUserID',
-        spotifyAccessToken,
-        spotifyAccessTokenExpiration,
-        spotifyRefreshToken
+        spotifyUserID,
+        accessToken,
+        expiration,
+        refreshToken
         )
       ] ->
         Just $
           User
-            { userID = userID,
-              friendCode = friendCode,
-              spotifyUserID = spotifyUserID',
-              spotifyCredentials =
-                SpotifyCredentials
-                  { accessToken = spotifyAccessToken,
-                    refreshToken = spotifyRefreshToken,
-                    expiration = spotifyAccessTokenExpiration
-                  }
+            { userID,
+              friendCode,
+              spotifyUserID,
+              spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
             }
     [] -> Nothing
     _ -> Nothing
@@ -151,7 +139,7 @@ getCredentials app conn (User {userID, spotifyCredentials}) = do
         execute
           conn
           "UPDATE hipsterfy_user\
-          \ SET spotify_access_token = ?, spotify_access_token_expiration = ?, spotify_refresh_token = ?)\
+          \ SET spotify_access_token = ?, spotify_access_token_expiration = ?, spotify_refresh_token = ?\
           \ WHERE id = ?"
           ( accessToken,
             expiration,

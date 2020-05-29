@@ -1,16 +1,17 @@
 module Hipsterfy (runServer, Options (..)) where
 
-import Control.Monad.Except (liftEither, throwError)
+import Control.Monad.Except (throwError)
 import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
 import Hipsterfy.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Session (endSession, getSession, startSession)
-import Hipsterfy.Spotify (Scope, SpotifyApp (SpotifyApp), scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
-import Hipsterfy.User (createOAuthRedirect, createUser)
+import Hipsterfy.Spotify (Scope, SpotifyApp (SpotifyApp), getFollowedSpotifyArtists, scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
+import Hipsterfy.User (createOAuthRedirect, createUser, getCredentials)
 import Network.Wai.Handler.Warp (defaultSettings, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import Relude
 import Web.Scotty (ActionM, ScottyM, html, middleware, param, redirect, scottyOpts)
 import qualified Web.Scotty as S
+import Web.Scotty.Internal.Types (ActionError (Redirect))
 
 data Options = Options
   { host :: Text,
@@ -58,28 +59,43 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
 
       -- Authorization callback. Populate a user's Spotify information based on the callback. Set cookies to logged in. Redirect to home page.
       S.get "/authorize/callback" $ do
-        -- TODO: actually handle these errors - some of them should continue, some of them return an error message, some of them should abort silently.
-        void $ runExceptT $ do
-          -- If a session is already set, then ignore this request.
-          session <- lift $ getSession conn
-          when (isJust session) $ throwError "session already set"
+        -- If a session is already set, then ignore this request.
+        session <- getSession conn
+        case session of
+          Just _ -> throwError $ Redirect "/"
+          Nothing -> return ()
 
-          -- Obtain access tokens.
-          code <- lift $ (param "code" :: ActionM Text)
-          oauthState <- lift $ (param "state" :: ActionM Text)
-          user <- liftEither =<< createUser spotifyApp conn code oauthState
+        -- Obtain access tokens.
+        code <- param "code" :: ActionM Text
+        oauthState <- param "state" :: ActionM Text
+        eitherUser <- createUser spotifyApp conn code oauthState
+        user <- case eitherUser of
+          Right user -> return user
+          Left err -> do
+            print err
+            throwError $ Redirect "/"
 
-          -- Create a new session.
-          lift $ startSession conn user
+        -- Create a new session.
+        startSession conn user
 
         -- Redirect to dashboard.
         redirect "/"
 
       -- Compare your artists against a friend code. Must be logged in.
       S.post "/compare" $ do
+        -- Require authentication.
+        maybeUser <- getSession conn
+        user <- case maybeUser of
+          Just u -> return u
+          Nothing -> throwError $ Redirect "/"
+
         friendCode <- param "friend-code" :: ActionM Text
         print friendCode
-        -- query conn "SELECT " (Only _)
+
+        creds <- liftIO $ getCredentials spotifyApp conn user
+        artists <- getFollowedSpotifyArtists $ creds
+        print artists
+
         html comparePage
 
       -- Clear logged in cookies.

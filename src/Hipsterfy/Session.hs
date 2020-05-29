@@ -24,9 +24,9 @@ getSession conn = do
       [ ( userID,
           friendCode,
           spotifyUserID,
-          spotifyAccessToken,
-          spotifyAccessTokenExpiration,
-          spotifyRefreshToken
+          accessToken,
+          expiration,
+          refreshToken
           )
         ] <-
         liftIO $
@@ -40,15 +40,10 @@ getSession conn = do
             (Only c)
       return $ Just $
         User
-          { userID = userID,
-            friendCode = friendCode,
-            spotifyUserID = spotifyUserID,
-            spotifyCredentials =
-              SpotifyCredentials
-                { accessToken = spotifyAccessToken,
-                  refreshToken = spotifyRefreshToken,
-                  expiration = spotifyAccessTokenExpiration
-                }
+          { userID,
+            friendCode,
+            spotifyUserID,
+            spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
           }
 
 startSession :: (MonadIO m, ScottyError e) => Connection -> User -> ActionT e m ()
