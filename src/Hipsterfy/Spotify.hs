@@ -130,6 +130,7 @@ requestAccessToken SpotifyApp {clientID, clientSecret} params = do
     secret :: Text
     secret = encodeBase64 $ clientID <> ":" <> clientSecret
 
+{- HLINT ignore SpotifyUserObjectResponse "Use newtype instead of data" -}
 data SpotifyUserObjectResponse = SpotifyUserObjectResponse
   { spotifyUserID :: Text
   }
@@ -259,6 +260,7 @@ getAnonymousBearerToken = do
   res <- liftIO $ asJSON =<< get "https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
   return $ accessToken (res ^. responseBody :: SpotifyAnonymousBearerTokenResponse)
 
+{- HLINT ignore SpotifyArtistInsightsResponse "Use newtype instead of data" -}
 data SpotifyArtistInsightsResponse = SpotifyArtistInsightsResponse
   { monthlyListeners :: Int
   }
