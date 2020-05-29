@@ -23,10 +23,10 @@ data Options = Options
   deriving (Show)
 
 runServer :: Options -> IO ()
-runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
-  conn <- connectPostgreSQL $ encodeUtf8 $ pgConn
+runServer Options {host, port, pgConn, clientID, clientSecret} = do
+  conn <- connectPostgreSQL $ encodeUtf8 pgConn
 
-  putStrLn $ "Starting server at: " `mappend` (show address)
+  putStrLn $ "Starting server at: " `mappend` show address
   scottyOpts
     S.Options {verbose = 0, settings = defaultSettings & setPort port}
     $ app conn
@@ -52,7 +52,7 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
         user <- getSession conn
         case user of
           Just u -> html $ accountPage u
-          Nothing -> html $ loginPage
+          Nothing -> html loginPage
 
       -- Authorization redirect. Generate a new user's OAuth secret and friend code. Redirect to Spotify.
       S.get "/authorize" $ createOAuthRedirect spotifyApp conn spotifyScopes >>= redirect
@@ -96,7 +96,7 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
         -- TODO: this takes a while to load, we should probably cache the results.
         -- I think it's just the monthly listeners that are slow. Maybe cache those results?
         -- Maybe split into an "Artist" type and an "ArtistWithInsights" type, and create a "SpotifyCache" module.
-        artists <- getFollowedSpotifyArtists $ creds
+        artists <- getFollowedSpotifyArtists creds
         print artists
 
         html comparePage

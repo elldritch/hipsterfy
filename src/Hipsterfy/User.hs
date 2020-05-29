@@ -41,7 +41,7 @@ createUser app conn authCode oauthState =
     spotifyCredentials <- liftEither =<< case oauthStateRows of
       [_] -> do
         void $ liftIO $ execute conn "DELETE FROM spotify_oauth_request WHERE oauth2_state = ?" (Only oauthState)
-        requestAccessTokenFromAuthorizationCode app authCode >>= return . Right
+        Right <$> requestAccessTokenFromAuthorizationCode app authCode
       _ -> throwError "invalid OAuth request state"
 
     -- Exchange OAuth authorization code for credentials.
@@ -55,7 +55,7 @@ createUser app conn authCode oauthState =
         friendCode <- liftIO $ pack <$> randomWord randomASCII 20
         userRows <- liftIO $ insertUser friendCode spotifyUserID spotifyCredentials
         case userRows of
-          [(Only userID)] -> return $ User {userID, friendCode, spotifyUserID, spotifyCredentials}
+          [Only userID] -> return $ User {userID, friendCode, spotifyUserID, spotifyCredentials}
           _ -> throwError "impossible: insert of single User returned zero or multiple IDs"
   where
     insertUser :: Text -> Text -> SpotifyCredentials -> IO [Only Int]
@@ -124,8 +124,8 @@ getUser conn sql params = do
 -- Operations.
 
 getCredentials :: (MonadIO m) => SpotifyApp -> Connection -> User -> m SpotifyCredentials
-getCredentials app conn (User {userID, spotifyCredentials}) = do
-  now <- liftIO $ getCurrentTime
+getCredentials app conn User {userID, spotifyCredentials} = do
+  now <- liftIO getCurrentTime
   if now > expiration spotifyCredentials
     then do
       refreshedCreds <- requestAccessTokenFromRefreshToken app spotifyCredentials
@@ -134,7 +134,7 @@ getCredentials app conn (User {userID, spotifyCredentials}) = do
     else return spotifyCredentials
   where
     updateCreds :: SpotifyCredentials -> IO ()
-    updateCreds (SpotifyCredentials {accessToken, refreshToken, expiration}) =
+    updateCreds SpotifyCredentials {accessToken, refreshToken, expiration} =
       void $
         execute
           conn

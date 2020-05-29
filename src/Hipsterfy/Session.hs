@@ -47,7 +47,7 @@ getSession conn = do
           }
 
 startSession :: (MonadIO m, ScottyError e) => Connection -> User -> ActionT e m ()
-startSession conn (User {userID}) = do
+startSession conn User {userID} = do
   -- Create a new session in the database.
   cookieSecret <- liftIO $ randomWord randomASCII 20
   void $ liftIO $

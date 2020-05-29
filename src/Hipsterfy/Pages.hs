@@ -10,7 +10,7 @@ import qualified Text.Blaze.Html5.Attributes as A
 
 render :: Html -> LT.Text
 render body = renderHtml $ docTypeHtml $ do
-  H.head $ H.title $ "Hipsterfy"
+  H.head $ H.title "Hipsterfy"
   H.body body
 
 loginPage :: LT.Text
@@ -19,9 +19,9 @@ loginPage = render $ do
 
 accountPage :: User -> LT.Text
 accountPage user = render $ do
-  H.p $ "Logged in as " `mappend` (toHtml $ spotifyUserID user)
+  H.p $ "Logged in as " `mappend` toHtml (spotifyUserID user)
   H.form ! A.action "/compare" ! A.method "POST" $ do
-    H.label $ "Add friend code:"
+    H.label "Add friend code:"
     H.input ! A.type_ "text" ! A.name "friend-code"
     H.input ! A.type_ "submit"
   H.a ! A.href "/logout" $ "Log out"
