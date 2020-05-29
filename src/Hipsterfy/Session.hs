@@ -4,7 +4,7 @@ import Data.Time (secondsToDiffTime)
 import Database.PostgreSQL.Simple (Connection, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
 import Hipsterfy.Spotify (SpotifyCredentials (..))
-import Hipsterfy.User (User (..), UserID)
+import Hipsterfy.User (User (..))
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
 import Web.Cookie (SetCookie (..), defaultSetCookie)
@@ -47,13 +47,12 @@ getSession conn = do
               SpotifyCredentials
                 { accessToken = spotifyAccessToken,
                   refreshToken = spotifyRefreshToken,
-                  expiration = spotifyAccessTokenExpiration,
-                  scopes = [] -- TODO: should this be saved?
+                  expiration = spotifyAccessTokenExpiration
                 }
           }
 
-startSession :: (MonadIO m, ScottyError e) => Connection -> UserID -> ActionT e m ()
-startSession conn userID = do
+startSession :: (MonadIO m, ScottyError e) => Connection -> User -> ActionT e m ()
+startSession conn (User {userID}) = do
   -- Create a new session in the database.
   cookieSecret <- liftIO $ randomWord randomASCII 20
   void $ liftIO $

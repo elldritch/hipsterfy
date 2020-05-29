@@ -9,8 +9,8 @@ CREATE TABLE hipsterfy_user (
 );
 
 CREATE TABLE spotify_oauth_request (
-  id            SERIAL PRIMARY KEY,
-  oauth2_secret TEXT   NOT NULL UNIQUE
+  id           SERIAL PRIMARY KEY,
+  oauth2_state TEXT   NOT NULL UNIQUE
 );
 
 CREATE TABLE hipsterfy_user_session (

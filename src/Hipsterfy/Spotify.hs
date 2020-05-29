@@ -1,14 +1,13 @@
 module Hipsterfy.Spotify
   ( SpotifyApp (..),
     SpotifyCredentials (..),
-    OAuthState,
     redirectURI,
-    exchangeToken,
+    requestAccessTokenFromAuthorizationCode,
+    requestAccessTokenFromRefreshToken,
     Scope,
     scopeUserFollowRead,
     scopeUserLibraryRead,
     scopeUserTopRead,
-    SpotifyUserID,
     getSpotifyUserID,
     SpotifyArtist (..),
     getSpotifyArtists,
@@ -23,12 +22,9 @@ import Data.Text (unpack)
 import Data.Text.Encoding.Base64 (encodeBase64)
 import qualified Data.Text.Lazy as LT
 import Data.Time (UTCTime, addUTCTime, getCurrentTime, secondsToNominalDiffTime)
-import Database.PostgreSQL.Simple (Connection, execute, query)
 import Network.HTTP.Types (renderSimpleQuery)
-import Database.PostgreSQL.Simple.Types (Only (Only))
 import Network.Wreq (FormParam ((:=)), asJSON, defaults, getWith, header, postWith, responseBody)
 import Relude
-import Test.RandomStrings (randomASCII, randomWord)
 
 data SpotifyApp = SpotifyApp
   { clientID :: Text,
@@ -39,8 +35,7 @@ data SpotifyApp = SpotifyApp
 data SpotifyCredentials = SpotifyCredentials
   { accessToken :: Text,
     refreshToken :: Text,
-    expiration :: UTCTime,
-    scopes :: [Scope]
+    expiration :: UTCTime
   }
   deriving (Show)
 
@@ -53,7 +48,7 @@ spotifyTokenURL = "https://accounts.spotify.com/api/token"
 spotifyAPIURL :: Text
 spotifyAPIURL = "https://api.spotify.com/v1"
 
-newtype Scope = Scope ByteString deriving (Show)
+newtype Scope = Scope Text deriving (Show)
 
 scopeUserLibraryRead :: Scope
 scopeUserLibraryRead = Scope "user-library-read"
@@ -64,23 +59,14 @@ scopeUserFollowRead = Scope "user-follow-read"
 scopeUserTopRead :: Scope
 scopeUserTopRead = Scope "user-top-read"
 
-type OAuthState = ByteString
-
-redirectURI :: (MonadIO m) => SpotifyApp -> Connection -> [Scope] -> m LT.Text
-redirectURI app conn scopes = do
-  oauthState <- liftIO $ randomWord randomASCII 20
-  let url = redirectURI' app scopes $ encodeUtf8 oauthState
-  void $ liftIO $ execute conn "INSERT INTO spotify_oauth_request (oauth2_secret) VALUES (?)" $ Only oauthState
-  return url
-
-redirectURI' :: SpotifyApp -> [Scope] -> OAuthState -> LT.Text
-redirectURI' (SpotifyApp {clientID, redirectAddress}) scopes oauthState =
+redirectURI :: SpotifyApp -> [Scope] -> Text -> LT.Text
+redirectURI (SpotifyApp {clientID, redirectAddress}) scopes oauthState =
   fromStrict $ spotifyAuthURL <> qs
   where
-    renderScopes :: [Scope] -> ByteString
-    renderScopes ss = mconcat $ intersperse (" " :: ByteString) bss
+    renderScopes :: [Scope] -> Text
+    renderScopes ss = mconcat $ intersperse (" " :: Text) bss
       where
-        bss :: [ByteString]
+        bss :: [Text]
         bss = fmap (\(Scope s) -> s) ss
     qs :: Text
     qs =
@@ -90,8 +76,8 @@ redirectURI' (SpotifyApp {clientID, redirectAddress}) scopes oauthState =
           [ ("client_id", encodeUtf8 clientID),
             ("response_type", "code"),
             ("redirect_uri", encodeUtf8 redirectAddress),
-            ("state", oauthState),
-            ("scope", renderScopes scopes)
+            ("state", encodeUtf8 oauthState),
+            ("scope", encodeUtf8 $ renderScopes scopes)
           ]
 
 data SpotifyTokenResponse = SpotifyTokenResponse
@@ -105,46 +91,46 @@ data SpotifyTokenResponse = SpotifyTokenResponse
 
 instance FromJSON SpotifyTokenResponse
 
-exchangeToken :: (MonadIO m, MonadFail m) => SpotifyApp -> Connection -> ByteString -> OAuthState -> m (Either Text SpotifyCredentials)
-exchangeToken sa conn code oauthState = do
-  [Only count] <- liftIO (query conn "SELECT COUNT(*) FROM spotify_oauth_request WHERE oauth2_secret = ?" (Only oauthState) :: IO [Only Int])
-  if count == 0
-    then return $ Left "invalid OAuth request state"
-    else do
-      void $ liftIO $ execute conn "DELETE FROM spotify_oauth_request WHERE oauth2_secret = ?" (Only oauthState)
-      exchangeToken' sa code >>= return . Right
+requestAccessTokenFromAuthorizationCode :: (MonadIO m) => SpotifyApp -> Text -> m SpotifyCredentials
+requestAccessTokenFromAuthorizationCode app code =
+  requestAccessToken
+    app
+    [ "grant_type" := ("authorization_code" :: Text),
+      "code" := code,
+      "redirect_uri" := redirectAddress app
+    ]
 
-exchangeToken' :: (MonadIO m) => SpotifyApp -> ByteString -> m SpotifyCredentials
-exchangeToken' (SpotifyApp {clientID, clientSecret, redirectAddress}) code = do
+requestAccessTokenFromRefreshToken :: (MonadIO m) => SpotifyApp -> SpotifyCredentials -> m SpotifyCredentials
+requestAccessTokenFromRefreshToken app (SpotifyCredentials {refreshToken}) =
+  requestAccessToken
+    app
+    [ "grant_type" := ("refresh_token" :: Text),
+      "refresh_token" := refreshToken
+    ]
+
+requestAccessToken :: (MonadIO m) => SpotifyApp -> [FormParam] -> m SpotifyCredentials
+requestAccessToken (SpotifyApp {clientID, clientSecret}) params = do
   res <-
     liftIO $
       asJSON
         =<< postWith
-          (defaults & header "Authorization" .~ ["Basic " <> secret])
+          (defaults & header "Authorization" .~ ["Basic " <> encodeUtf8 secret])
           (unpack spotifyTokenURL)
-          [ "grant_type" := ("authorization_code" :: Text),
-            "code" := code,
-            "redirect_uri" := redirectAddress
-          ]
+          params
   now <- liftIO getCurrentTime
   let body = res ^. responseBody
   return $
     SpotifyCredentials
       { accessToken = access_token body,
         refreshToken = refresh_token body,
-        expiration = addUTCTime (secondsToNominalDiffTime $ MkFixed $ toInteger $ expires_in body) now,
-        scopes = parseScopes $ scope body
+        expiration = addUTCTime (secondsToNominalDiffTime $ MkFixed $ toInteger $ expires_in body) now
       }
   where
-    secret :: ByteString
-    secret = encodeUtf8 $ encodeBase64 $ clientID <> ":" <> clientSecret
-    parseScopes :: Text -> [Scope]
-    parseScopes s = fmap (Scope . encodeUtf8) $ words s
-
-type SpotifyUserID = Text
+    secret :: Text
+    secret = encodeBase64 $ clientID <> ":" <> clientSecret
 
 data SpotifyUserObjectResponse = SpotifyUserObjectResponse
-  { spotifyID :: SpotifyUserID
+  { spotifyID :: Text
   }
   deriving (Generic)
 
@@ -153,7 +139,7 @@ instance FromJSON SpotifyUserObjectResponse where
   parseJSON invalid = typeMismatch "user" invalid
 
 -- TODO: support refresh token.
-getSpotifyUserID :: (MonadIO m) => SpotifyCredentials -> m SpotifyUserID
+getSpotifyUserID :: (MonadIO m) => SpotifyCredentials -> m Text
 getSpotifyUserID (SpotifyCredentials {accessToken}) = do
   res <-
     liftIO $
@@ -164,10 +150,9 @@ getSpotifyUserID (SpotifyCredentials {accessToken}) = do
   let body = res ^. responseBody
   return $ spotifyID body
 
-type SpotifyArtistID = Text
-
 data SpotifyArtist = SpotifyArtist
-  { spotifyURL :: Text,
+  { spotifyArtistID :: Text,
+    spotifyURL :: Text,
     name :: Text,
     followers :: Int,
     popularity :: Int,
@@ -177,5 +162,5 @@ data SpotifyArtist = SpotifyArtist
 getSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getSpotifyArtists creds = undefined
 
-getSpotifyArtistMonthlyListeners :: (MonadIO m) => SpotifyCredentials -> SpotifyArtistID -> m (Maybe Int)
+getSpotifyArtistMonthlyListeners :: (MonadIO m) => SpotifyCredentials -> SpotifyArtist -> m (Maybe Int)
 getSpotifyArtistMonthlyListeners creds artistID = undefined

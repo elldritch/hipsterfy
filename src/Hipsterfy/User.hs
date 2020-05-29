@@ -1,6 +1,5 @@
 module Hipsterfy.User
-  ( UserID,
-    FriendCode,
+  ( createOAuthRedirect,
     User (..),
     createUser,
     getUserBySpotifyID,
@@ -8,64 +7,106 @@ module Hipsterfy.User
   )
 where
 
+import Control.Monad.Except (liftEither)
 import Data.Text (pack)
-import Database.PostgreSQL.Simple (Connection, query)
+import qualified Data.Text.Lazy as LT
+import Database.PostgreSQL.Simple (Connection, Query, ToRow, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
-import Hipsterfy.Spotify (SpotifyCredentials (..), SpotifyUserID)
+import Hipsterfy.Spotify (Scope, SpotifyApp, SpotifyCredentials (..), getSpotifyUserID, redirectURI, requestAccessTokenFromAuthorizationCode)
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
 
-type UserID = Int
-
-type FriendCode = Text
-
 data User = User
-  { userID :: UserID,
-    friendCode :: FriendCode,
-    spotifyUserID :: SpotifyUserID,
+  { userID :: Int,
+    friendCode :: Text,
+    spotifyUserID :: Text,
     spotifyCredentials :: SpotifyCredentials
   }
 
-createUser :: (MonadIO m, MonadFail m) => Connection -> SpotifyUserID -> SpotifyCredentials -> m User
-createUser conn spotifyUserID creds = do
-  friendCode <- liftIO $ randomWord randomASCII 20
-  [Only userID] <-
-    liftIO $
-      ( query
-          conn
-          "INSERT INTO hipsterfy_user\
-          \ (friend_code, spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token)\
-          \ VALUES (?, ?, ?, ?, ?)\
-          \ RETURNING id"
-          ( friendCode,
-            spotifyUserID,
-            accessToken creds,
-            expiration creds,
-            refreshToken creds
-          ) ::
-          IO [Only Int]
-      )
-  return $
-    User
-      { userID = userID,
-        friendCode = pack friendCode,
-        spotifyUserID = spotifyUserID,
-        spotifyCredentials = creds
-      }
+-- Signup and creation.
 
-getUserBySpotifyID :: (MonadIO m) => Connection -> SpotifyUserID -> m (Maybe User)
-getUserBySpotifyID conn spotifyUserID = do
-  rows <-
-    liftIO $
+createOAuthRedirect :: (MonadIO m) => SpotifyApp -> Connection -> [Scope] -> m LT.Text
+createOAuthRedirect app conn scopes = do
+  oauthState <- liftIO $ pack <$> randomWord randomASCII 20
+  void $ liftIO $ execute conn "INSERT INTO spotify_oauth_request (oauth2_state) VALUES (?)" $ Only oauthState
+  return $ redirectURI app scopes oauthState
+
+createUser :: (MonadIO m) => SpotifyApp -> Connection -> Text -> Text -> m (Either Text User)
+createUser app conn authCode oauthState =
+  runExceptT $ do
+    -- Validate the OAuth state, then delete that state.
+    oauthStateRows <- liftIO (query conn "SELECT oauth2_state FROM spotify_oauth_request WHERE oauth2_state = ?" (Only oauthState) :: IO [Only Text])
+    creds <- liftEither =<< case oauthStateRows of
+      [_] -> do
+        void $ liftIO $ execute conn "DELETE FROM spotify_oauth_request WHERE oauth2_state = ?" (Only oauthState)
+        requestAccessTokenFromAuthorizationCode app authCode >>= return . Right
+      _ -> return $ Left "invalid OAuth request state"
+
+    -- Exchange OAuth authorization code for credentials.
+    spotifyUserID <- liftIO $ getSpotifyUserID creds
+
+    -- Construct a user if one doesn't already exist.
+    spotifyUser <- lift $ getUserBySpotifyID conn spotifyUserID
+    case spotifyUser of
+      Just u -> return u
+      Nothing -> do
+        friendCode <- liftIO $ pack <$> randomWord randomASCII 20
+        userRows <- liftIO $ insertUser friendCode spotifyUserID creds
+        liftEither $ case userRows of
+          [(Only userID)] ->
+            Right $
+              User
+                { userID = userID,
+                  friendCode = friendCode,
+                  spotifyUserID = spotifyUserID,
+                  spotifyCredentials = creds
+                }
+          _ -> Left "impossible: insert of single User returned zero or multiple IDs"
+  where
+    insertUser :: Text -> Text -> SpotifyCredentials -> IO [Only Int]
+    insertUser friendCode spotifyUserID creds =
       query
         conn
-        "SELECT\
-        \ id, friend_code,\
-        \ spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
-        \ FROM hipsterfy_user\
-        \ WHERE spotify_user_id = ?"
-        (Only spotifyUserID)
+        "INSERT INTO hipsterfy_user\
+        \ (friend_code, spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token)\
+        \ VALUES (?, ?, ?, ?, ?)\
+        \ RETURNING id"
+        ( friendCode,
+          spotifyUserID,
+          accessToken creds,
+          expiration creds,
+          refreshToken creds
+        )
 
+-- Retrieval.
+
+getUserBySpotifyID :: (MonadIO m) => Connection -> Text -> m (Maybe User)
+getUserBySpotifyID conn spotifyUserID =
+  getUser
+    conn
+    "SELECT\
+    \ id, friend_code,\
+    \ spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
+    \ FROM hipsterfy_user\
+    \ WHERE spotify_user_id = ?"
+    (Only spotifyUserID)
+
+getUserByFriendCode :: (MonadIO m) => Connection -> Text -> m (Maybe User)
+getUserByFriendCode conn friendCode =
+  getUser
+    conn
+    "SELECT\
+    \ id, friend_code,\
+    \ spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
+    \ FROM hipsterfy_user\
+    \ WHERE friend_code = ?"
+    (Only friendCode)
+
+getUser :: (MonadIO m, ToRow q) => Connection -> Query -> q -> m (Maybe User)
+getUser conn sql params = do
+  -- TODO: is there a way we can compose the SQL query, so we can specify the
+  -- columns and just take the `WHERE` clause as an argument?
+  rows <- liftIO $ query conn sql params
   return $ case rows of
     [ ( userID,
         friendCode,
@@ -84,12 +125,8 @@ getUserBySpotifyID conn spotifyUserID = do
                 SpotifyCredentials
                   { accessToken = spotifyAccessToken,
                     refreshToken = spotifyRefreshToken,
-                    expiration = spotifyAccessTokenExpiration,
-                    scopes = [] -- TODO: should this be saved?
+                    expiration = spotifyAccessTokenExpiration
                   }
             }
     [] -> Nothing
     _ -> Nothing
-
-getUserByFriendCode :: (MonadIO m) => Connection -> FriendCode -> m (Maybe user)
-getUserByFriendCode conn friendCode = undefined

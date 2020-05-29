@@ -4,8 +4,8 @@ import Control.Monad.Except (liftEither, throwError)
 import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
 import Hipsterfy.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Session (endSession, getSession, startSession)
-import Hipsterfy.Spotify (Scope, SpotifyApp (SpotifyApp), exchangeToken, getSpotifyUserID, redirectURI, scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
-import Hipsterfy.User (User (..), createUser, getUserBySpotifyID)
+import Hipsterfy.Spotify (Scope, SpotifyApp (SpotifyApp), scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
+import Hipsterfy.User (createOAuthRedirect, createUser)
 import Network.Wai.Handler.Warp (defaultSettings, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import Relude
@@ -15,7 +15,7 @@ import qualified Web.Scotty as S
 data Options = Options
   { host :: Text,
     port :: Int,
-    pgConn :: ByteString,
+    pgConn :: Text,
     clientID :: Text,
     clientSecret :: Text
   }
@@ -23,7 +23,7 @@ data Options = Options
 
 runServer :: Options -> IO ()
 runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
-  conn <- connectPostgreSQL pgConn
+  conn <- connectPostgreSQL $ encodeUtf8 $ pgConn
 
   putStrLn $ "Starting server at: " `mappend` (show address)
   scottyOpts
@@ -54,36 +54,24 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
           Nothing -> html $ loginPage
 
       -- Authorization redirect. Generate a new user's OAuth secret and friend code. Redirect to Spotify.
-      S.get "/authorize" $ do
-        url <- redirectURI spotifyApp conn spotifyScopes
-        redirect url
+      S.get "/authorize" $ createOAuthRedirect spotifyApp conn spotifyScopes >>= redirect
 
       -- Authorization callback. Populate a user's Spotify information based on the callback. Set cookies to logged in. Redirect to home page.
       S.get "/authorize/callback" $ do
-        result <- runExceptT $ do
+        -- TODO: actually handle these errors - some of them should continue, some of them return an error message, some of them should abort silently.
+        void $ runExceptT $ do
           -- If a session is already set, then ignore this request.
           session <- lift $ getSession conn
           when (isJust session) $ throwError "session already set"
 
           -- Obtain access tokens.
-          code <- lift $ (param "code" :: ActionM ByteString)
-          oauthState <- lift $ (param "state" :: ActionM ByteString)
-          creds <- liftEither =<< exchangeToken spotifyApp conn code oauthState
-
-          -- Check whether this user already exists. If it doesn't, then create a new user.
-          spotifyUserID <- liftIO $ getSpotifyUserID creds
-          spotifyUser <- lift $ getUserBySpotifyID conn spotifyUserID
-          user <- case spotifyUser of
-            Just u -> do
-              return $ userID u
-            Nothing -> do
-              newUser <- lift $ createUser conn spotifyUserID creds
-              return $ userID newUser
+          code <- lift $ (param "code" :: ActionM Text)
+          oauthState <- lift $ (param "state" :: ActionM Text)
+          user <- liftEither =<< createUser spotifyApp conn code oauthState
 
           -- Create a new session.
           lift $ startSession conn user
 
-        print result
         -- Redirect to dashboard.
         redirect "/"
 
