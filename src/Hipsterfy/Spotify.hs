@@ -15,14 +15,15 @@ module Hipsterfy.Spotify
 where
 
 import Control.Lens ((.~), (^.))
+import Control.Monad.Loops (unfoldrM)
 import Data.Aeson ((.:), FromJSON (..), withObject)
 import Data.Text (unpack)
 import Data.Text.Encoding.Base64 (encodeBase64)
 import qualified Data.Text.Lazy as LT
 import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime)
 import Network.HTTP.Types (renderSimpleQuery)
-import Network.Wreq (FormParam ((:=)), asJSON, defaults, getWith, header, postWith, responseBody)
-import Relude
+import Network.Wreq (FormParam ((:=)), asJSON, defaults, get, getWith, header, postWith, responseBody)
+import Relude hiding (get)
 
 data SpotifyApp = SpotifyApp
   { clientID :: Text,
@@ -176,7 +177,7 @@ instance FromJSON SpotifyFollowedArtistsResponse where
     withObject
       "artists"
       ( \v -> do
-          artists <- (traceWithMessage "v" v) .: "items"
+          artists <- v .: "items"
           next <- v .: "next"
           total <- v .: "total"
           return SpotifyFollowedArtistsResponse {artists, next, total}
@@ -210,39 +211,74 @@ instance FromJSON SpotifyArtistObjectResponse where
           popularity
         }
 
-traceWithMessage :: Show a => String -> a -> a
-traceWithMessage msg x = trace (msg ++ ": " ++ show x) x
-
 getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getFollowedSpotifyArtists (SpotifyCredentials {accessToken}) = do
-  -- res <-
-  --   liftIO $
-  --     asJSON
-  --       =<< getWith
-  --         (defaults & header "Authorization" .~ ["Bearer " <> (encodeUtf8 accessToken)])
-  --         (unpack $ spotifyAPIURL <> "/me")
+  -- Load all followed artists.
+  pages <- liftIO $ unfoldPages $ unpack $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
+  let artistObjects = concat $ fmap artists pages
+
+  -- Get an anonymous bearer token.
+  bearerToken <- getAnonymousBearerToken
+
+  -- Load the monthly listeners of each artist.
+  liftIO $ mapM (toArtist bearerToken) artistObjects
+  where
+    toArtist :: Text -> SpotifyArtistObjectResponse -> IO SpotifyArtist
+    toArtist bearerToken (SpotifyArtistObjectResponse {spotifyArtistID, spotifyURL, name, followers, popularity}) = do
+      monthlyListeners <- getSpotifyArtistMonthlyListeners bearerToken spotifyArtistID
+      return SpotifyArtist {spotifyArtistID, spotifyURL, name, followers, popularity, monthlyListeners}
+    unfoldPages :: String -> IO [SpotifyFollowedArtistsResponse]
+    unfoldPages url = unfoldrM unfoldPages' $ Just $ url
+    unfoldPages' :: Maybe String -> IO (Maybe (SpotifyFollowedArtistsResponse, Maybe String))
+    unfoldPages' u = case u of
+      Nothing -> return Nothing
+      Just url -> do
+        page <- loadPage url
+        return $ case next page of
+          Just url' -> Just (page, Just $ unpack url')
+          Nothing -> Just (page, Nothing)
+    loadPage :: String -> IO SpotifyFollowedArtistsResponse
+    loadPage url = do
+      res <-
+        asJSON
+          =<< getWith
+            (defaults & header "Authorization" .~ ["Bearer " <> (encodeUtf8 accessToken)])
+            url
+      return $ res ^. responseBody
+
+data SpotifyAnonymousBearerTokenResponse = SpotifyAnonymousBearerTokenResponse
+  { clientId :: Text,
+    accessToken :: Text,
+    accessTokenExpirationTimestampMs :: Int,
+    isAnonymous :: Bool
+  }
+  deriving (Generic)
+
+instance FromJSON SpotifyAnonymousBearerTokenResponse
+
+getAnonymousBearerToken :: (MonadIO m) => m Text
+getAnonymousBearerToken = do
+  res <- liftIO $ asJSON =<< get "https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
+  return $ accessToken (res ^. responseBody :: SpotifyAnonymousBearerTokenResponse)
+
+data SpotifyArtistInsightsResponse = SpotifyArtistInsightsResponse
+  { monthlyListeners :: Int
+  }
+
+instance FromJSON SpotifyArtistInsightsResponse where
+  parseJSON = withObject "artist insights response" $ \res -> do
+    insights <- res .: "artistInsights"
+    monthlyListeners <- withObject "artistInsights" (\v -> v .: "monthly_listeners") insights
+    return SpotifyArtistInsightsResponse {monthlyListeners}
+
+getSpotifyArtistMonthlyListeners :: (MonadIO m) => Text -> Text -> m Int
+getSpotifyArtistMonthlyListeners bearerToken artistID = do
   res <-
     liftIO $
-      getWith
-        (defaults & header "Authorization" .~ ["Bearer " <> (encodeUtf8 accessToken)])
-        (unpack $ spotifyAPIURL <> "/me/following?type=artist")
-  print $ res ^. responseBody
+      asJSON
+        =<< getWith
+          (defaults & header "Authorization" .~ ["Bearer " <> (encodeUtf8 bearerToken)])
+          (unpack $ "https://spclient.wg.spotify.com/open-backend-2/v1/artists/" <> artistID)
+  return $ monthlyListeners (res ^. responseBody :: SpotifyArtistInsightsResponse)
 
-  res2 <- liftIO $ asJSON res
-  let body = traceWithMessage "followed artist response" $ res2 ^. responseBody :: SpotifyFollowedArtistsResponse
-  print body
-  undefined
-
--- getSpotifyUserID :: (MonadIO m) => SpotifyCredentials -> m Text
--- getSpotifyUserID (SpotifyCredentials {accessToken}) = do
---   res <-
---     liftIO $
---       asJSON
---         =<< getWith
---           (defaults & header "Authorization" .~ ["Bearer " <> (encodeUtf8 accessToken)])
---           (unpack $ spotifyAPIURL <> "/me")
---   let body = res ^. responseBody
---   return $ spotifyUserID body
-
-getSpotifyArtistMonthlyListeners :: (MonadIO m) => SpotifyArtist -> m (Maybe Int)
-getSpotifyArtistMonthlyListeners artistID = undefined
+--`curl 'https://spclient.wg.spotify.com/open-backend-2/v1/artists/62GoYifV4njTdvS8lD2yYT' -H 'authorization: Bearer XXXX`

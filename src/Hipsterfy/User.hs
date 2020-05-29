@@ -123,13 +123,13 @@ getUser conn sql params = do
 
 -- Operations.
 
-getCredentials :: SpotifyApp -> Connection -> User -> IO SpotifyCredentials
+getCredentials :: (MonadIO m) => SpotifyApp -> Connection -> User -> m SpotifyCredentials
 getCredentials app conn (User {userID, spotifyCredentials}) = do
-  now <- getCurrentTime
+  now <- liftIO $ getCurrentTime
   if now > expiration spotifyCredentials
     then do
       refreshedCreds <- requestAccessTokenFromRefreshToken app spotifyCredentials
-      updateCreds refreshedCreds
+      liftIO $ updateCreds refreshedCreds
       return refreshedCreds
     else return spotifyCredentials
   where

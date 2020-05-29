@@ -93,6 +93,9 @@ runServer (Options {host, port, pgConn, clientID, clientSecret}) = do
         print friendCode
 
         creds <- liftIO $ getCredentials spotifyApp conn user
+        -- TODO: this takes a while to load, we should probably cache the results.
+        -- I think it's just the monthly listeners that are slow. Maybe cache those results?
+        -- Maybe split into an "Artist" type and an "ArtistWithInsights" type, and create a "SpotifyCache" module.
         artists <- getFollowedSpotifyArtists $ creds
         print artists
 
