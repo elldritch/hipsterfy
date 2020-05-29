@@ -4,15 +4,17 @@ module Hipsterfy.User
     createUser,
     getUserBySpotifyID,
     getUserByFriendCode,
+    getCredentials,
   )
 where
 
 import Control.Monad.Except (liftEither)
 import Data.Text (pack)
 import qualified Data.Text.Lazy as LT
+import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Query, ToRow, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
-import Hipsterfy.Spotify (Scope, SpotifyApp, SpotifyCredentials (..), getSpotifyUserID, redirectURI, requestAccessTokenFromAuthorizationCode)
+import Hipsterfy.Spotify (Scope, SpotifyApp, SpotifyCredentials (..), getSpotifyUserID, redirectURI, requestAccessTokenFromAuthorizationCode, requestAccessTokenFromRefreshToken)
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
 
@@ -130,3 +132,29 @@ getUser conn sql params = do
             }
     [] -> Nothing
     _ -> Nothing
+
+-- Operations.
+
+getCredentials :: SpotifyApp -> Connection -> User -> IO SpotifyCredentials
+getCredentials app conn (User {userID, spotifyCredentials}) = do
+  now <- getCurrentTime
+  if now > expiration spotifyCredentials
+    then do
+      refreshedCreds <- requestAccessTokenFromRefreshToken app spotifyCredentials
+      updateCreds refreshedCreds
+      return refreshedCreds
+    else return spotifyCredentials
+  where
+    updateCreds :: SpotifyCredentials -> IO ()
+    updateCreds (SpotifyCredentials {accessToken, refreshToken, expiration}) =
+      void $
+        execute
+          conn
+          "UPDATE hipsterfy_user\
+          \ SET spotify_access_token = ?, spotify_access_token_expiration = ?, spotify_refresh_token = ?)\
+          \ WHERE id = ?"
+          ( accessToken,
+            expiration,
+            refreshToken,
+            userID
+          )

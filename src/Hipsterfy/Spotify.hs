@@ -10,7 +10,7 @@ module Hipsterfy.Spotify
     scopeUserTopRead,
     getSpotifyUserID,
     SpotifyArtist (..),
-    getSpotifyArtists,
+    getFollowedSpotifyArtists,
   )
 where
 
@@ -41,12 +41,6 @@ data SpotifyCredentials = SpotifyCredentials
 
 spotifyAuthURL :: Text
 spotifyAuthURL = "https://accounts.spotify.com/authorize"
-
-spotifyTokenURL :: Text
-spotifyTokenURL = "https://accounts.spotify.com/api/token"
-
-spotifyAPIURL :: Text
-spotifyAPIURL = "https://api.spotify.com/v1"
 
 newtype Scope = Scope Text deriving (Show)
 
@@ -79,6 +73,9 @@ redirectURI (SpotifyApp {clientID, redirectAddress}) scopes oauthState =
             ("state", encodeUtf8 oauthState),
             ("scope", encodeUtf8 $ renderScopes scopes)
           ]
+
+spotifyTokenURL :: Text
+spotifyTokenURL = "https://accounts.spotify.com/api/token"
 
 data SpotifyTokenResponse = SpotifyTokenResponse
   { access_token :: Text,
@@ -138,7 +135,9 @@ instance FromJSON SpotifyUserObjectResponse where
   parseJSON (Object v) = SpotifyUserObjectResponse <$> v .: "id"
   parseJSON invalid = typeMismatch "user" invalid
 
--- TODO: support refresh token.
+spotifyAPIURL :: Text
+spotifyAPIURL = "https://api.spotify.com/v1"
+
 getSpotifyUserID :: (MonadIO m) => SpotifyCredentials -> m Text
 getSpotifyUserID (SpotifyCredentials {accessToken}) = do
   res <-
@@ -159,8 +158,8 @@ data SpotifyArtist = SpotifyArtist
     monthlyListeners :: Int
   }
 
-getSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
-getSpotifyArtists creds = undefined
+getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
+getFollowedSpotifyArtists creds = undefined
 
-getSpotifyArtistMonthlyListeners :: (MonadIO m) => SpotifyCredentials -> SpotifyArtist -> m (Maybe Int)
-getSpotifyArtistMonthlyListeners creds artistID = undefined
+getSpotifyArtistMonthlyListeners :: (MonadIO m) => SpotifyArtist -> m (Maybe Int)
+getSpotifyArtistMonthlyListeners artistID = undefined
