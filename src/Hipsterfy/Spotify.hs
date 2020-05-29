@@ -11,6 +11,10 @@ module Hipsterfy.Spotify
     getSpotifyUserID,
     SpotifyArtist (..),
     getFollowedSpotifyArtists,
+    SpotifyArtistInsights (..),
+    getSpotifyArtistInsights,
+    AnonymousBearerToken,
+    getAnonymousBearerToken,
   )
 where
 
@@ -158,13 +162,36 @@ data SpotifyArtist = SpotifyArtist
     spotifyURL :: Text,
     name :: Text,
     followers :: Int,
-    popularity :: Int,
-    monthlyListeners :: Int
+    genres :: [Text],
+    images :: [SpotifyArtistImage],
+    popularity :: Int
   }
   deriving (Show)
 
+instance FromJSON SpotifyArtist where
+  parseJSON = withObject "artist" $ \v -> do
+    spotifyArtistID <- v .: "id"
+    urls <- v .: "external_urls"
+    spotifyURL <- withObject "external_urls" (.: "spotify") urls
+    name <- v .: "name"
+    followersObject <- v .: "followers"
+    followers <- withObject "followers" (.: "total") followersObject
+    genres <- v .: "genres"
+    images <- v .: "images"
+    popularity <- v .: "popularity"
+    return SpotifyArtist {spotifyArtistID, spotifyURL, name, followers, genres, images, popularity}
+
+data SpotifyArtistImage = SpotifyArtistImage
+  { height :: Int,
+    width :: Int,
+    url :: Text
+  }
+  deriving (Show, Generic)
+
+instance FromJSON SpotifyArtistImage
+
 data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
-  { artists :: [SpotifyArtistObjectResponse],
+  { artists :: [SpotifyArtist],
     total :: Int,
     next :: Maybe Text
   }
@@ -183,49 +210,13 @@ instance FromJSON SpotifyFollowedArtistsResponse where
       )
       artistsObject
 
-data SpotifyArtistObjectResponse = SpotifyArtistObjectResponse
-  { spotifyArtistID :: Text,
-    spotifyURL :: Text,
-    name :: Text,
-    followers :: Int,
-    popularity :: Int
-  }
-  deriving (Show)
-
-instance FromJSON SpotifyArtistObjectResponse where
-  parseJSON = withObject "artist" $ \v -> do
-    spotifyArtistID <- v .: "id"
-    urls <- v .: "external_urls"
-    spotifyURL <- withObject "external_urls" (.: "spotify") urls
-    name <- v .: "name"
-    followersObject <- v .: "followers"
-    followers <- withObject "followers" (.: "total") followersObject
-    popularity <- v .: "popularity"
-    return
-      SpotifyArtistObjectResponse
-        { spotifyArtistID,
-          spotifyURL,
-          name,
-          followers,
-          popularity
-        }
-
 getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getFollowedSpotifyArtists SpotifyCredentials {accessToken} = do
   -- Load all followed artists.
   pages <- liftIO $ unfoldPages $ unpack $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
-  let artistObjects = concatMap artists pages
-
-  -- Get an anonymous bearer token.
-  bearerToken <- getAnonymousBearerToken
-
-  -- Load the monthly listeners of each artist.
-  liftIO $ mapM (toArtist bearerToken) artistObjects
+  let followedArtists = concatMap artists pages
+  return followedArtists
   where
-    toArtist :: Text -> SpotifyArtistObjectResponse -> IO SpotifyArtist
-    toArtist bearerToken SpotifyArtistObjectResponse {spotifyArtistID, spotifyURL, name, followers, popularity} = do
-      monthlyListeners <- getSpotifyArtistMonthlyListeners bearerToken spotifyArtistID
-      return SpotifyArtist {spotifyArtistID, spotifyURL, name, followers, popularity, monthlyListeners}
     unfoldPages :: String -> IO [SpotifyFollowedArtistsResponse]
     unfoldPages url = unfoldrM unfoldPages' $ Just url
     unfoldPages' :: Maybe String -> IO (Maybe (SpotifyFollowedArtistsResponse, Maybe String))
@@ -255,30 +246,39 @@ data SpotifyAnonymousBearerTokenResponse = SpotifyAnonymousBearerTokenResponse
 
 instance FromJSON SpotifyAnonymousBearerTokenResponse
 
-getAnonymousBearerToken :: (MonadIO m) => m Text
+newtype AnonymousBearerToken = AnonymousBearerToken Text
+
+getAnonymousBearerToken :: (MonadIO m) => m AnonymousBearerToken
 getAnonymousBearerToken = do
   res <- liftIO $ asJSON =<< get "https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
-  return $ accessToken (res ^. responseBody :: SpotifyAnonymousBearerTokenResponse)
+  return $ AnonymousBearerToken $ accessToken (res ^. responseBody :: SpotifyAnonymousBearerTokenResponse)
 
-{- HLINT ignore SpotifyArtistInsightsResponse "Use newtype instead of data" -}
-data SpotifyArtistInsightsResponse = SpotifyArtistInsightsResponse
-  { monthlyListeners :: Int
+data SpotifyArtistInsights = SpotifyArtistInsights
+  { autobiography :: Text,
+    biography :: Text,
+    monthlyListeners :: Int
   }
 
-instance FromJSON SpotifyArtistInsightsResponse where
+instance FromJSON SpotifyArtistInsights where
   parseJSON = withObject "artist insights response" $ \res -> do
     insights <- res .: "artistInsights"
-    monthlyListeners <- withObject "artistInsights" (.: "monthly_listeners") insights
-    return SpotifyArtistInsightsResponse {monthlyListeners}
+    withObject
+      "artistInsights"
+      ( \v -> do
+          autobiographyObject <- v .: "autobiography"
+          autobiography <- withObject "autobiography" (.: "body") autobiographyObject
+          biography <- v .: "biography"
+          monthlyListeners <- v .: "monthly_listeners"
+          return $ SpotifyArtistInsights {autobiography, biography, monthlyListeners}
+      )
+      insights
 
-getSpotifyArtistMonthlyListeners :: (MonadIO m) => Text -> Text -> m Int
-getSpotifyArtistMonthlyListeners bearerToken artistID = do
+getSpotifyArtistInsights :: (MonadIO m) => AnonymousBearerToken -> SpotifyArtist -> m SpotifyArtistInsights
+getSpotifyArtistInsights (AnonymousBearerToken bearerToken) SpotifyArtist {spotifyArtistID} = do
   res <-
     liftIO $
       asJSON
         =<< getWith
           (defaults & header "Authorization" .~ ["Bearer " <> encodeUtf8 bearerToken])
-          (unpack $ "https://spclient.wg.spotify.com/open-backend-2/v1/artists/" <> artistID)
-  return $ monthlyListeners (res ^. responseBody :: SpotifyArtistInsightsResponse)
-
---`curl 'https://spclient.wg.spotify.com/open-backend-2/v1/artists/62GoYifV4njTdvS8lD2yYT' -H 'authorization: Bearer XXXX`
+          (unpack $ "https://spclient.wg.spotify.com/open-backend-2/v1/artists/" <> spotifyArtistID)
+  return (res ^. responseBody :: SpotifyArtistInsights)
