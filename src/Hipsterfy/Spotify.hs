@@ -166,7 +166,7 @@ data SpotifyArtist = SpotifyArtist
     images :: [SpotifyArtistImage],
     popularity :: Int
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance FromJSON SpotifyArtist where
   parseJSON = withObject "artist" $ \v -> do
@@ -186,7 +186,7 @@ data SpotifyArtistImage = SpotifyArtistImage
     width :: Int,
     url :: Text
   }
-  deriving (Show, Generic)
+  deriving (Show, Generic, Eq)
 
 instance FromJSON SpotifyArtistImage
 
@@ -257,7 +257,7 @@ getAnonymousBearerToken = do
 data SpotifyArtistInsights = SpotifyArtistInsights
   { monthlyListeners :: Int
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance FromJSON SpotifyArtistInsights where
   parseJSON = withObject "artist insights response" $ \res -> do
