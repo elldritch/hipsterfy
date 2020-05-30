@@ -1,6 +1,8 @@
 cradle:
   cabal:
-    - path: "./app"
+    - path: "./cmd/hipsterfy"
       component: "exe:hipsterfy"
+    - path: "./cmd/hipsterfy-worker"
+      component: "exe:hipsterfy-worker"
     - path: "./src"
       component: "lib:hipsterfy"

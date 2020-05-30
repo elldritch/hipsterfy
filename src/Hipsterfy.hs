@@ -2,9 +2,10 @@ module Hipsterfy (runServer, Options (..)) where
 
 import Control.Monad.Except (throwError)
 import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
+import Hipsterfy.Artist (getArtistInsights)
 import Hipsterfy.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Session (endSession, getSession, startSession)
-import Hipsterfy.Spotify (Scope, SpotifyApp (SpotifyApp), getFollowedSpotifyArtists, scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
+import Hipsterfy.Spotify (getAnonymousBearerToken, Scope, SpotifyApp (SpotifyApp), getFollowedSpotifyArtists, scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
 import Hipsterfy.User (createOAuthRedirect, createUser, getCredentials)
 import Network.Wai.Handler.Warp (defaultSettings, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
@@ -97,9 +98,10 @@ runServer Options {host, port, pgConn, clientID, clientSecret} = do
         -- I think it's just the monthly listeners that are slow. Maybe cache those results?
         -- Maybe split into an "Artist" type and an "ArtistWithInsights" type, and create a "SpotifyCache" module.
         artists <- getFollowedSpotifyArtists creds
-        print artists
+        bearerToken <- getAnonymousBearerToken
+        insights <- mapM (getArtistInsights conn bearerToken) artists
 
-        html comparePage
+        html $ comparePage $ zip artists insights
 
       -- Clear logged in cookies.
       S.get "/logout" $ do

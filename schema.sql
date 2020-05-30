@@ -18,3 +18,28 @@ CREATE TABLE hipsterfy_user_session (
   user_id       INT    NOT NULL REFERENCES hipsterfy_user(id),
   cookie_secret TEXT   NOT NULL UNIQUE
 );
+
+CREATE TABLE spotify_artist (
+  id SERIAL PRIMARY KEY,
+
+  name              TEXT   NOT NULL,
+  spotify_artist_id TEXT   NOT NULL UNIQUE,
+  spotify_url       TEXT   NOT NULL,
+  biography         TEXT   NOT NULL,
+  autobiography     TEXT   NOT NULL,
+  followers         INT    NOT NULL,
+  genres            TEXT[] NOT NULL,
+  popularity        INT    NOT NULL,
+
+  last_updated TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE spotify_artist_listeners (
+  id SERIAL PRIMARY KEY,
+
+  spotify_artist_id INT NOT NULL REFERENCES spotify_artist(id),
+  timestamp         DATE NOT NULL,
+  monthly_listeners INT NOT NULL
+
+  -- TODO: we can segment this per-city as well. Does the sum of all cities equal total listeners?
+);

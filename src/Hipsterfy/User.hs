@@ -10,7 +10,7 @@ where
 
 import Control.Monad.Except (liftEither, throwError)
 import Data.Text (pack)
-import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy as Lazy
 import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Query, ToRow, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
@@ -27,7 +27,7 @@ data User = User
 
 -- Signup and creation.
 
-createOAuthRedirect :: (MonadIO m) => SpotifyApp -> Connection -> [Scope] -> m LT.Text
+createOAuthRedirect :: (MonadIO m) => SpotifyApp -> Connection -> [Scope] -> m Lazy.Text
 createOAuthRedirect app conn scopes = do
   oauthState <- liftIO $ pack <$> randomWord randomASCII 20
   void $ liftIO $ execute conn "INSERT INTO spotify_oauth_request (oauth2_state) VALUES (?)" $ Only oauthState
@@ -56,7 +56,7 @@ createUser app conn authCode oauthState =
         userRows <- liftIO $ insertUser friendCode spotifyUserID spotifyCredentials
         case userRows of
           [Only userID] -> return $ User {userID, friendCode, spotifyUserID, spotifyCredentials}
-          _ -> throwError "impossible: insert of single User returned zero or multiple IDs"
+          _ -> error "impossible: insert of single User returned zero or more than 1 row"
   where
     insertUser :: Text -> Text -> SpotifyCredentials -> IO [Only Int]
     insertUser friendCode spotifyUserID creds =
@@ -118,7 +118,6 @@ getUser conn sql params = do
               spotifyUserID,
               spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
             }
-    [] -> Nothing
     _ -> Nothing
 
 -- Operations.

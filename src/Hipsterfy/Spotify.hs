@@ -23,7 +23,7 @@ import Control.Monad.Loops (unfoldrM)
 import Data.Aeson ((.:), FromJSON (..), withObject)
 import Data.Text (unpack)
 import Data.Text.Encoding.Base64 (encodeBase64)
-import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy as Lazy
 import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime)
 import Network.HTTP.Types (renderSimpleQuery)
 import Network.Wreq (FormParam ((:=)), asJSON, defaults, get, getWith, header, postWith, responseBody)
@@ -56,7 +56,7 @@ scopeUserFollowRead = Scope "user-follow-read"
 scopeUserTopRead :: Scope
 scopeUserTopRead = Scope "user-top-read"
 
-redirectURI :: SpotifyApp -> [Scope] -> Text -> LT.Text
+redirectURI :: SpotifyApp -> [Scope] -> Text -> Lazy.Text
 redirectURI SpotifyApp {clientID, redirectAddress} scopes oauthState =
   fromStrict $ spotifyAuthURL <> qs
   where
@@ -253,11 +253,11 @@ getAnonymousBearerToken = do
   res <- liftIO $ asJSON =<< get "https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
   return $ AnonymousBearerToken $ accessToken (res ^. responseBody :: SpotifyAnonymousBearerTokenResponse)
 
+{- HLINT ignore SpotifyArtistInsights "Use newtype instead of data" -}
 data SpotifyArtistInsights = SpotifyArtistInsights
-  { autobiography :: Text,
-    biography :: Text,
-    monthlyListeners :: Int
+  { monthlyListeners :: Int
   }
+  deriving (Show)
 
 instance FromJSON SpotifyArtistInsights where
   parseJSON = withObject "artist insights response" $ \res -> do
@@ -265,11 +265,8 @@ instance FromJSON SpotifyArtistInsights where
     withObject
       "artistInsights"
       ( \v -> do
-          autobiographyObject <- v .: "autobiography"
-          autobiography <- withObject "autobiography" (.: "body") autobiographyObject
-          biography <- v .: "biography"
           monthlyListeners <- v .: "monthly_listeners"
-          return $ SpotifyArtistInsights {autobiography, biography, monthlyListeners}
+          return $ SpotifyArtistInsights {monthlyListeners}
       )
       insights
 
