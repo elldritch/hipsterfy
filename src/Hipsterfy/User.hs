@@ -14,7 +14,16 @@ import qualified Data.Text.Lazy as Lazy
 import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Query, ToRow, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
-import Hipsterfy.Spotify (Scope, SpotifyApp, SpotifyCredentials (..), getSpotifyUserID, redirectURI, requestAccessTokenFromAuthorizationCode, requestAccessTokenFromRefreshToken)
+import Hipsterfy.Spotify
+  ( Scope,
+    SpotifyApp,
+    SpotifyCredentials (..),
+    SpotifyUser (..),
+    getSpotifyUser,
+    redirectURI,
+    requestAccessTokenFromAuthorizationCode,
+    requestAccessTokenFromRefreshToken,
+  )
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
 
@@ -22,6 +31,7 @@ data User = User
   { userID :: Int,
     friendCode :: Text,
     spotifyUserID :: Text,
+    spotifyUserName :: Text,
     spotifyCredentials :: SpotifyCredentials
   }
 
@@ -45,32 +55,33 @@ createUser app conn authCode oauthState =
       _ -> throwError "invalid OAuth request state"
 
     -- Exchange OAuth authorization code for credentials.
-    spotifyUserID <- liftIO $ getSpotifyUserID spotifyCredentials
+    spotifyUser@SpotifyUser {spotifyUserID, spotifyUserName} <- liftIO $ getSpotifyUser spotifyCredentials
 
     -- Construct a user if one doesn't already exist.
-    spotifyUser <- lift $ getUserBySpotifyID conn spotifyUserID
-    case spotifyUser of
+    user <- lift $ getUserBySpotifyID conn spotifyUserID
+    case user of
       Just u -> return u
       Nothing -> do
         friendCode <- liftIO $ pack <$> randomWord randomASCII 20
-        userRows <- liftIO $ insertUser friendCode spotifyUserID spotifyCredentials
+        userRows <- liftIO $ insertUser friendCode spotifyUser spotifyCredentials
         case userRows of
-          [Only userID] -> return $ User {userID, friendCode, spotifyUserID, spotifyCredentials}
+          [Only userID] -> return $ User {userID, friendCode, spotifyUserID, spotifyUserName, spotifyCredentials}
           _ -> error "impossible: insert of single User returned zero or more than 1 row"
   where
-    insertUser :: Text -> Text -> SpotifyCredentials -> IO [Only Int]
-    insertUser friendCode spotifyUserID creds =
+    insertUser :: Text -> SpotifyUser -> SpotifyCredentials -> IO [Only Int]
+    insertUser friendCode SpotifyUser {spotifyUserID, spotifyUserName} SpotifyCredentials {accessToken, expiration, refreshToken} =
       query
         conn
         "INSERT INTO hipsterfy_user\
-        \ (friend_code, spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token)\
-        \ VALUES (?, ?, ?, ?, ?)\
+        \ (friend_code, spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token)\
+        \ VALUES (?, ?, ?, ?, ?, ?)\
         \ RETURNING id"
         ( friendCode,
           spotifyUserID,
-          accessToken creds,
-          expiration creds,
-          refreshToken creds
+          spotifyUserName,
+          accessToken,
+          expiration,
+          refreshToken
         )
 
 -- Retrieval.
@@ -81,7 +92,7 @@ getUserBySpotifyID conn spotifyUserID =
     conn
     "SELECT\
     \ id, friend_code,\
-    \ spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
+    \ spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
     \ FROM hipsterfy_user\
     \ WHERE spotify_user_id = ?"
     (Only spotifyUserID)
@@ -92,7 +103,7 @@ getUserByFriendCode conn friendCode =
     conn
     "SELECT\
     \ id, friend_code,\
-    \ spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
+    \ spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
     \ FROM hipsterfy_user\
     \ WHERE friend_code = ?"
     (Only friendCode)
@@ -106,6 +117,7 @@ getUser conn sql params = do
     [ ( userID,
         friendCode,
         spotifyUserID,
+        spotifyUserName,
         accessToken,
         expiration,
         refreshToken
@@ -116,6 +128,7 @@ getUser conn sql params = do
             { userID,
               friendCode,
               spotifyUserID,
+              spotifyUserName,
               spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
             }
     _ -> Nothing

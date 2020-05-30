@@ -24,6 +24,7 @@ getSession conn = do
       [ ( userID,
           friendCode,
           spotifyUserID,
+          spotifyUserName,
           accessToken,
           expiration,
           refreshToken
@@ -34,7 +35,7 @@ getSession conn = do
             conn
             "SELECT\
             \ hipsterfy_user.id, friend_code,\
-            \ spotify_user_id, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
+            \ spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
             \ FROM hipsterfy_user_session JOIN hipsterfy_user ON hipsterfy_user_session.user_id = hipsterfy_user.id\
             \ WHERE hipsterfy_user_session.cookie_secret = ?"
             (Only c)
@@ -43,6 +44,7 @@ getSession conn = do
           { userID,
             friendCode,
             spotifyUserID,
+            spotifyUserName,
             spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
           }
 

@@ -3,6 +3,7 @@ CREATE TABLE hipsterfy_user (
   friend_code   TEXT   NOT NULL UNIQUE,
 
   spotify_user_id                 TEXT UNIQUE,
+  spotify_user_name               TEXT,
   spotify_access_token            TEXT,
   spotify_access_token_expiration TIMESTAMPTZ,
   spotify_refresh_token           TEXT

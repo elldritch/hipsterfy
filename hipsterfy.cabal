@@ -34,6 +34,7 @@ library
     , relude             ==0.7.0.0
     , scotty             ==0.12
     , scotty-cookie      ==0.1.0.3
+    , split              ==0.2.3.4
     , text               ==1.2.4.0
     , time               ==1.9.3
     , wai-extra          ==3.0.29.2

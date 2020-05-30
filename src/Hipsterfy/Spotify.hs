@@ -8,7 +8,8 @@ module Hipsterfy.Spotify
     scopeUserFollowRead,
     scopeUserLibraryRead,
     scopeUserTopRead,
-    getSpotifyUserID,
+    SpotifyUser (..),
+    getSpotifyUser,
     SpotifyArtist (..),
     getFollowedSpotifyArtists,
     SpotifyArtistInsights (..),
@@ -134,28 +135,27 @@ requestAccessToken SpotifyApp {clientID, clientSecret} params = do
     secret :: Text
     secret = encodeBase64 $ clientID <> ":" <> clientSecret
 
-{- HLINT ignore SpotifyUserObjectResponse "Use newtype instead of data" -}
-data SpotifyUserObjectResponse = SpotifyUserObjectResponse
-  { spotifyUserID :: Text
+data SpotifyUser = SpotifyUser
+  { spotifyUserID :: Text,
+    spotifyUserName :: Text
   }
-  deriving (Generic)
 
-instance FromJSON SpotifyUserObjectResponse where
-  parseJSON = withObject "user" $ \v -> SpotifyUserObjectResponse <$> v .: "id"
+instance FromJSON SpotifyUser where
+  parseJSON = withObject "user" $ \v ->
+    SpotifyUser <$> v .: "id" <*> v .: "display_name"
 
 spotifyAPIURL :: Text
 spotifyAPIURL = "https://api.spotify.com/v1"
 
-getSpotifyUserID :: (MonadIO m) => SpotifyCredentials -> m Text
-getSpotifyUserID SpotifyCredentials {accessToken} = do
+getSpotifyUser :: (MonadIO m) => SpotifyCredentials -> m SpotifyUser
+getSpotifyUser SpotifyCredentials {accessToken} = do
   res <-
     liftIO $
       asJSON
         =<< getWith
           (defaults & header "Authorization" .~ ["Bearer " <> encodeUtf8 accessToken])
           (unpack $ spotifyAPIURL <> "/me")
-  let body = res ^. responseBody
-  return $ spotifyUserID body
+  return $ res ^. responseBody
 
 data SpotifyArtist = SpotifyArtist
   { spotifyArtistID :: Text,
