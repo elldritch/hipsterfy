@@ -76,7 +76,7 @@ endSession :: (MonadIO m, ScottyError e) => Connection -> ActionT e m ()
 endSession conn = do
   cookie <- getCookie hipsterfyCookieName
   case cookie of
-    Nothing -> return ()
+    Nothing -> pass
     Just cookieSecret -> do
       -- Find and delete session in the database.
       void $ liftIO $ execute conn "DELETE FROM hipsterfy_user_session WHERE cookie_secret = ?" (Only cookieSecret)

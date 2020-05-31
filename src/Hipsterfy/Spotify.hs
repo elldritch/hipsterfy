@@ -22,9 +22,7 @@ where
 import Control.Lens ((.~), (^.))
 import Control.Monad.Loops (unfoldrM)
 import Data.Aeson ((.:), FromJSON (..), withObject)
-import Data.Text (unpack)
 import Data.Text.Encoding.Base64 (encodeBase64)
-import qualified Data.Text.Lazy as Lazy
 import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime)
 import Network.HTTP.Types (renderSimpleQuery)
 import Network.Wreq (FormParam ((:=)), asJSON, defaults, get, getWith, header, postWith, responseBody)
@@ -57,7 +55,7 @@ scopeUserFollowRead = Scope "user-follow-read"
 scopeUserTopRead :: Scope
 scopeUserTopRead = Scope "user-top-read"
 
-redirectURI :: SpotifyApp -> [Scope] -> Text -> Lazy.Text
+redirectURI :: SpotifyApp -> [Scope] -> Text -> LText
 redirectURI SpotifyApp {clientID, redirectAddress} scopes oauthState =
   fromStrict $ spotifyAuthURL <> qs
   where
@@ -118,7 +116,7 @@ requestAccessToken SpotifyApp {clientID, clientSecret} params = do
       asJSON
         =<< postWith
           (defaults & header "Authorization" .~ ["Basic " <> encodeUtf8 secret])
-          (unpack spotifyTokenURL)
+          (toString spotifyTokenURL)
           params
   now <- liftIO getCurrentTime
   let body = res ^. responseBody
@@ -154,7 +152,7 @@ getSpotifyUser SpotifyCredentials {accessToken} = do
       asJSON
         =<< getWith
           (defaults & header "Authorization" .~ ["Bearer " <> encodeUtf8 accessToken])
-          (unpack $ spotifyAPIURL <> "/me")
+          (toString $ spotifyAPIURL <> "/me")
   return $ res ^. responseBody
 
 data SpotifyArtist = SpotifyArtist
@@ -213,7 +211,7 @@ instance FromJSON SpotifyFollowedArtistsResponse where
 getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getFollowedSpotifyArtists SpotifyCredentials {accessToken} = do
   -- Load all followed artists.
-  pages <- liftIO $ unfoldPages $ unpack $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
+  pages <- liftIO $ unfoldPages $ toString $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
   let followedArtists = concatMap artists pages
   return followedArtists
   where
@@ -225,7 +223,7 @@ getFollowedSpotifyArtists SpotifyCredentials {accessToken} = do
       Just url -> do
         page <- loadPage url
         return $ case next page of
-          Just url' -> Just (page, Just $ unpack url')
+          Just url' -> Just (page, Just $ toString url')
           Nothing -> Just (page, Nothing)
     loadPage :: String -> IO SpotifyFollowedArtistsResponse
     loadPage url = do
@@ -277,5 +275,5 @@ getSpotifyArtistInsights (AnonymousBearerToken bearerToken) SpotifyArtist {spoti
       asJSON
         =<< getWith
           (defaults & header "Authorization" .~ ["Bearer " <> encodeUtf8 bearerToken])
-          (unpack $ "https://spclient.wg.spotify.com/open-backend-2/v1/artists/" <> spotifyArtistID)
+          (toString $ "https://spclient.wg.spotify.com/open-backend-2/v1/artists/" <> spotifyArtistID)
   return (res ^. responseBody :: SpotifyArtistInsights)

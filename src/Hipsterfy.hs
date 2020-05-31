@@ -63,7 +63,7 @@ server spotifyApp conn = do
     session <- getSession conn
     case session of
       Just _ -> throwError $ Redirect "/"
-      Nothing -> return ()
+      Nothing -> pass
 
     -- Obtain access tokens.
     code <- param "code" :: ActionM Text

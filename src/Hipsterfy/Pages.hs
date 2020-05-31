@@ -1,7 +1,6 @@
 module Hipsterfy.Pages (loginPage, accountPage, comparePage) where
 
 import Data.List (intersect)
-import Data.Text.Lazy (Text, pack)
 import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), monthlyListeners, name)
 import Hipsterfy.User (User (..))
 import Relude hiding (Text, div, head)
@@ -11,7 +10,7 @@ import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import Data.List.Split (chunksOf)
 
-render :: Html -> Text
+render :: Html -> LText
 render body = renderHtml $ docTypeHtml $ do
   head $ do
     title "Hipsterfy"
@@ -20,7 +19,7 @@ render body = renderHtml $ docTypeHtml $ do
 
   H.body body
 
-loginPage :: Text
+loginPage :: LText
 loginPage = render $ do
   div ! A.class_ "min-h-screen flex flex-col py-12" $ do
     div ! A.class_ "mx-auto text-center" $ do
@@ -33,7 +32,7 @@ loginPage = render $ do
           ! A.href "/authorize"
           $ "Sign in with Spotify"
 
-accountPage :: User -> Text
+accountPage :: User -> LText
 accountPage User {spotifyUserName, friendCode} = render $ do
   div ! A.class_ "min-h-screen flex flex-col py-12" $ do
     div ! A.class_ "mx-auto" $ do
@@ -61,7 +60,7 @@ accountPage User {spotifyUserName, friendCode} = render $ do
             ! A.type_ "submit"
           $ "Enter"
 
-comparePage :: [(SpotifyArtist, SpotifyArtistInsights)] -> [(SpotifyArtist, SpotifyArtistInsights)] -> Text
+comparePage :: [(SpotifyArtist, SpotifyArtistInsights)] -> [(SpotifyArtist, SpotifyArtistInsights)] -> LText
 comparePage yourFollowedArtists friendFollowedArtists = render $ do
   div ! A.class_ "min-h-screen flex flex-col py-12" $ do
     div ! A.class_ "mx-auto" $ do
@@ -77,8 +76,8 @@ comparePage yourFollowedArtists friendFollowedArtists = render $ do
       br
       a ! A.class_ "underline text-blue-700" ! A.href "/" $ "Go back"
   where
-    formatInt :: Int -> Text
-    formatInt = pack . reverse . intercalate "," . chunksOf 3 . reverse . show
+    formatInt :: Int -> LText
+    formatInt = toLText . reverse . intercalate "," . chunksOf 3 . reverse . show
     renderArtist :: (SpotifyArtist, SpotifyArtistInsights) -> Html
     renderArtist (SpotifyArtist {spotifyURL, name}, SpotifyArtistInsights {monthlyListeners}) = tr $ do
       td $ a ! A.class_ "underline text-blue-700" ! A.href (textValue spotifyURL) $ toHtml name

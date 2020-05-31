@@ -9,8 +9,6 @@ module Hipsterfy.User
 where
 
 import Control.Monad.Except (liftEither, throwError)
-import Data.Text (pack)
-import qualified Data.Text.Lazy as Lazy
 import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Query, ToRow, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
@@ -37,9 +35,9 @@ data User = User
 
 -- Signup and creation.
 
-createOAuthRedirect :: (MonadIO m) => SpotifyApp -> Connection -> [Scope] -> m Lazy.Text
+createOAuthRedirect :: (MonadIO m) => SpotifyApp -> Connection -> [Scope] -> m LText
 createOAuthRedirect app conn scopes = do
-  oauthState <- liftIO $ pack <$> randomWord randomASCII 20
+  oauthState <- liftIO $ toText <$> randomWord randomASCII 20
   void $ liftIO $ execute conn "INSERT INTO spotify_oauth_request (oauth2_state) VALUES (?)" $ Only oauthState
   return $ redirectURI app scopes oauthState
 
@@ -62,7 +60,7 @@ createUser app conn authCode oauthState =
     case user of
       Just u -> return u
       Nothing -> do
-        friendCode <- liftIO $ pack <$> randomWord randomASCII 20
+        friendCode <- liftIO $ toText <$> randomWord randomASCII 20
         userRows <- liftIO $ insertUser friendCode spotifyUser spotifyCredentials
         case userRows of
           [Only userID] -> return $ User {userID, friendCode, spotifyUserID, spotifyUserName, spotifyCredentials}
