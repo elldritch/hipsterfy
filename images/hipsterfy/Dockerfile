@@ -34,7 +34,7 @@ FROM debian:10.4
 
 # Install system runtime dependencies.
 RUN apt-get update
-RUN apt-get install -y libpq5
+RUN apt-get install -y libpq5 ca-certificates
 
 # Copy build artifact from a builder stage
 COPY --from=builder /artifacts /usr/local/bin
