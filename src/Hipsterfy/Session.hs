@@ -21,15 +21,7 @@ getSession conn = do
     Nothing -> return Nothing
     Just c -> do
       -- TODO: handle exception case where user is not found.
-      [ ( userID,
-          friendCode,
-          spotifyUserID,
-          spotifyUserName,
-          accessToken,
-          expiration,
-          refreshToken
-          )
-        ] <-
+      rows <-
         liftIO $
           query
             conn
@@ -39,14 +31,18 @@ getSession conn = do
             \ FROM hipsterfy_user_session JOIN hipsterfy_user ON hipsterfy_user_session.user_id = hipsterfy_user.id\
             \ WHERE hipsterfy_user_session.cookie_secret = ?"
             (Only c)
-      return $ Just $
-        User
-          { userID,
-            friendCode,
-            spotifyUserID,
-            spotifyUserName,
-            spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
-          }
+      return $ case rows of
+        [(userID, friendCode, spotifyUserID, spotifyUserName, accessToken, expiration, refreshToken)] ->
+          Just $
+            User
+              { userID,
+                friendCode,
+                spotifyUserID,
+                spotifyUserName,
+                spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
+              }
+        [] -> Nothing
+        _ -> error "impossible: multiple sessions have the same cookie secret"
 
 startSession :: (MonadIO m, ScottyError e) => Connection -> User -> ActionT e m ()
 startSession conn User {userID} = do
