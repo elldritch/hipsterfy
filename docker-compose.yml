@@ -1,0 +1,33 @@
+version: "3"
+
+services:
+  app:
+    build:
+      dockerfile: ./images/hipsterfy/Dockerfile
+      context: .
+    command: [
+      "--host=${HIPSTERFY_ADDR_HOST}",
+      "--port=${HIPSTERFY_ADDR_PORT}",
+      "--db=postgresql://${HIPSTERFY_DB_USER}:${HIPSTERFY_DB_PASSWORD}@db:5432/${HIPSTERFY_DB_USER}",
+      "--client_id=${HIPSTERFY_SPOTIFY_CLIENT_ID}",
+      "--client_secret=${HIPSTERFY_SPOTIFY_CLIENT_SECRET}"
+    ]
+    ports:
+      - "${HIPSTERFY_ADDR_PORT}:${HIPSTERFY_ADDR_PORT}"
+    depends_on:
+      - db
+
+  db:
+    build:
+      dockerfile: ./images/hipsterfy-db/Dockerfile
+      context: .
+    environment:
+      POSTGRES_USER: ${HIPSTERFY_DB_USER}
+      POSTGRES_PASSWORD: ${HIPSTERFY_DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - "hipsterfy-db-data:/var/lib/postgresql/data"
+
+volumes:
+  hipsterfy-db-data:

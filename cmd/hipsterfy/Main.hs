@@ -1,7 +1,7 @@
 module Main (main) where
 
-import Relude
-
+import Control.Concurrent (myThreadId, throwTo)
+import Hipsterfy (Options (Options), runServer)
 import Options.Applicative
   ( ParserInfo,
     auto,
@@ -15,8 +15,10 @@ import Options.Applicative
     short,
     strOption,
   )
-
-import Hipsterfy (runServer, Options(Options))
+import Relude
+import System.Posix (Handler (Catch))
+import System.Exit (ExitCode (ExitSuccess))
+import System.Posix.Signals (installHandler, softwareTermination)
 
 opts :: ParserInfo Options
 opts =
@@ -34,5 +36,7 @@ opts =
 
 main :: IO ()
 main = do
+  tid <- myThreadId
+  _ <- installHandler softwareTermination (Catch $ throwTo tid ExitSuccess) Nothing
   options <- execParser opts
   runServer options

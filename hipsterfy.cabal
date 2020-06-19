@@ -58,18 +58,8 @@ executable hipsterfy
     , hipsterfy
     , optparse-applicative  ==0.15.1.0
     , relude                ==0.7.0.0
+    , unix                  ==2.7.2.2
 
   main-is:        Main.hs
   hs-source-dirs: cmd/hipsterfy
-  ghc-options:    -threaded -with-rtsopts=-N
-
-executable hipsterfy-worker
-  import:         lang
-  build-depends:
-    , hipsterfy
-    , optparse-applicative  ==0.15.1.0
-    , relude                ==0.7.0.0
-
-  main-is:        Main.hs
-  hs-source-dirs: cmd/hipsterfy-worker
   ghc-options:    -threaded -with-rtsopts=-N
