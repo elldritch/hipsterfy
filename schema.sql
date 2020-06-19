@@ -26,8 +26,6 @@ CREATE TABLE spotify_artist (
   name              TEXT   NOT NULL,
   spotify_artist_id TEXT   NOT NULL UNIQUE,
   spotify_url       TEXT   NOT NULL,
-  biography         TEXT   NOT NULL,
-  autobiography     TEXT   NOT NULL,
   followers         INT    NOT NULL,
   genres            TEXT[] NOT NULL,
   popularity        INT    NOT NULL,
