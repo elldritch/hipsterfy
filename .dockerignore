@@ -11,11 +11,12 @@
 # Build artifacts.
 dist-newstyle/
 
-# Local tool configuration.
+# Tool configuration.
 cabal.project.local
 hie.yaml
 .hlint.yaml
 .env
+.github
 
 # Documentation.
 README.md
