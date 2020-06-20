@@ -19,7 +19,7 @@ jobs:
           registry: docker.pkg.github.com
           username: liftM
           password: ${{ secrets.GITHUB_TOKEN }}
-          repository: liftM/hipsterfy/hipsterfy-db
+          repository: liftm/hipsterfy/hipsterfy-db
           tag_with_ref: true
           tag_with_sha: true
           path: .
@@ -30,7 +30,7 @@ jobs:
           registry: docker.pkg.github.com
           username: liftM
           password: ${{ secrets.GITHUB_TOKEN }}
-          repository: liftM/hipsterfy/hipsterfy-server
+          repository: liftm/hipsterfy/hipsterfy-server
           tag_with_ref: true
           tag_with_sha: true
           path: .
