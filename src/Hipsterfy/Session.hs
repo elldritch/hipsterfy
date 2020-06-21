@@ -1,6 +1,6 @@
 module Hipsterfy.Session (getSession, startSession, endSession) where
 
-import Data.Time (secondsToDiffTime)
+import Data.Time (getCurrentTime, secondsToDiffTime)
 import Database.PostgreSQL.Simple (Connection, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
 import Hipsterfy.Spotify (SpotifyCredentials (..))
@@ -48,14 +48,16 @@ startSession :: (MonadIO m, ScottyError e) => Connection -> User -> ActionT e m 
 startSession conn User {userID} = do
   -- Create a new session in the database.
   cookieSecret <- liftIO $ randomWord randomASCII 20
+  now <- liftIO getCurrentTime
   void $ liftIO $
     execute
       conn
       "INSERT INTO hipsterfy_user_session\
-      \ (user_id, cookie_secret)\
-      \ VALUES (?, ?)"
+      \ (user_id, cookie_secret, created_at)\
+      \ VALUES (?, ?, ?)"
       ( userID,
-        cookieSecret
+        cookieSecret,
+        now
       )
 
   -- Set session cookies.

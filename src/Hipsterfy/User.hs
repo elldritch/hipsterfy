@@ -38,7 +38,8 @@ data User = User
 createOAuthRedirect :: (MonadIO m) => SpotifyApp -> Connection -> [Scope] -> m LText
 createOAuthRedirect app conn scopes = do
   oauthState <- liftIO $ toText <$> randomWord randomASCII 20
-  void $ liftIO $ execute conn "INSERT INTO spotify_oauth_request (oauth2_state) VALUES (?)" $ Only oauthState
+  now <- liftIO getCurrentTime
+  void $ liftIO $ execute conn "INSERT INTO spotify_oauth_request (oauth2_state, created_at) VALUES (?, ?)" (oauthState, now)
   return $ redirectURI app scopes oauthState
 
 createUser :: (MonadIO m) => SpotifyApp -> Connection -> Text -> Text -> m (Either Text User)
@@ -67,19 +68,21 @@ createUser app conn authCode oauthState =
           _ -> error "impossible: insert of single User returned zero or more than 1 row"
   where
     insertUser :: Text -> SpotifyUser -> SpotifyCredentials -> IO [Only Int]
-    insertUser friendCode SpotifyUser {spotifyUserID, spotifyUserName} SpotifyCredentials {accessToken, expiration, refreshToken} =
+    insertUser friendCode SpotifyUser {spotifyUserID, spotifyUserName} SpotifyCredentials {accessToken, expiration, refreshToken} = do
+      now <- getCurrentTime
       query
         conn
         "INSERT INTO hipsterfy_user\
-        \ (friend_code, spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token)\
-        \ VALUES (?, ?, ?, ?, ?, ?)\
+        \ (friend_code, spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token, created_at)\
+        \ VALUES (?, ?, ?, ?, ?, ?, ?)\
         \ RETURNING id"
         ( friendCode,
           spotifyUserID,
           spotifyUserName,
           accessToken,
           expiration,
-          refreshToken
+          refreshToken,
+          now
         )
 
 -- Retrieval.

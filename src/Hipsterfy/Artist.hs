@@ -1,6 +1,6 @@
 module Hipsterfy.Artist (getArtistInsights, refreshArtistInsights) where
 
-import Data.Time (getCurrentTime, utctDay)
+import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Only (..), execute, query)
 import Hipsterfy.Spotify (AnonymousBearerToken, SpotifyArtist (..), SpotifyArtistInsights (..), getSpotifyArtistInsights)
 import Database.PostgreSQL.Simple.Types (PGArray (..))
@@ -17,7 +17,7 @@ getArtistInsights conn bearerToken artist@SpotifyArtist {spotifyArtistID} = do
         \ FROM spotify_artist_listeners\
         \ JOIN spotify_artist ON spotify_artist.id = spotify_artist_listeners.spotify_artist_id\
         \ WHERE spotify_artist.spotify_artist_id = ?\
-        \ AND date_trunc('month', spotify_artist_listeners.timestamp) = date_trunc('month', ? :: TIMESTAMP)\
+        \ AND date_trunc('month', spotify_artist_listeners.created_at) = date_trunc('month', ? :: TIMESTAMP)\
         \ LIMIT 1"
         (spotifyArtistID, now)
   case rows of
@@ -34,12 +34,12 @@ refreshArtistInsights conn bearerToken artist@SpotifyArtist {name, spotifyArtist
       query
         conn
         "INSERT INTO spotify_artist\
-        \ (name, spotify_artist_id, spotify_url, followers, genres, popularity, last_updated)\
+        \ (name, spotify_artist_id, spotify_url, followers, genres, popularity, last_updated, created_at)\
         \ VALUES\
-        \ (?, ?, ?, ?, ?, ?, ?)\
+        \ (?, ?, ?, ?, ?, ?, ?, ?)\
         \ ON CONFLICT (spotify_artist_id) DO UPDATE SET followers = ?, genres = ?, popularity = ?, last_updated = ?\
         \ RETURNING id"
-        (name, spotifyArtistID, spotifyURL, followers, PGArray genres, popularity, now, followers, PGArray genres, popularity, now)
+        (name, spotifyArtistID, spotifyURL, followers, PGArray genres, popularity, now, now, followers, PGArray genres, popularity, now)
   artistID <- case artistRows of
     [Only artistID] -> return artistID
     _ -> error "impossible: insert of single SpotifyArtist returned 0 or more than 1 row"
@@ -51,9 +51,9 @@ refreshArtistInsights conn bearerToken artist@SpotifyArtist {name, spotifyArtist
     execute
       conn
       "INSERT INTO spotify_artist_listeners\
-      \ (spotify_artist_id, timestamp, monthly_listeners)\
+      \ (spotify_artist_id, created_at, monthly_listeners)\
       \ VALUES\
       \ (?, ?, ?)"
-      (artistID :: Int, utctDay now, monthlyListeners)
+      (artistID :: Int, now, monthlyListeners)
 
   return insights
