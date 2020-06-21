@@ -188,43 +188,49 @@ data SpotifyArtistImage = SpotifyArtistImage
 
 instance FromJSON SpotifyArtistImage
 
-data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
-  { artists :: [SpotifyArtist],
+data SpotifyPagedResponse t = SpotifyPagedResponse
+  { items :: [t],
     total :: Int,
     next :: Maybe Text
   }
   deriving (Show)
 
-instance FromJSON SpotifyFollowedArtistsResponse where
-  parseJSON = withObject "followed artists response" $ \o -> do
-    artistsObject <- o .: "artists"
-    withObject
-      "artists"
-      ( \v -> do
-          artists <- v .: "items"
-          next <- v .: "next"
-          total <- v .: "total"
-          return SpotifyFollowedArtistsResponse {artists, next, total}
-      )
-      artistsObject
+instance (FromJSON t) => FromJSON (SpotifyPagedResponse t) where
+  parseJSON = withObject "Spotify API response" $ \v -> do
+    items <- parseJSON =<< v .: "items"
+    next <- v .: "next"
+    total <- v .: "total"
+    return SpotifyPagedResponse {items, next, total}
+
+unfoldPages :: (String -> IO (SpotifyPagedResponse t)) -> String -> IO [t]
+unfoldPages loadPage url = do
+  pages <- unfoldrM unfoldPages' $ Just url
+  return $ concatMap items pages
+  where
+    unfoldPages' u =
+      case u of
+        Nothing -> return Nothing
+        Just currURL -> do
+          page <- loadPage currURL
+          return $ case next page of
+            Just nextURL -> Just (page, Just $ toString nextURL)
+            Nothing -> Just (page, Nothing)
+
+{- HLINT ignore SpotifyFollowedArtistsResponse "Use newtype instead of data" -}
+data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
+  { artists :: SpotifyPagedResponse SpotifyArtist
+  }
+  deriving (Show, Generic)
+
+instance FromJSON SpotifyFollowedArtistsResponse
 
 getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
-getFollowedSpotifyArtists SpotifyCredentials {accessToken} = do
-  -- Load all followed artists.
-  pages <- liftIO $ unfoldPages $ toString $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
-  let followedArtists = concatMap artists pages
-  return followedArtists
+getFollowedSpotifyArtists SpotifyCredentials {accessToken} =
+  liftIO $ unfoldPages loadArtists $ toString $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
   where
-    unfoldPages :: String -> IO [SpotifyFollowedArtistsResponse]
-    unfoldPages url = unfoldrM unfoldPages' $ Just url
-    unfoldPages' :: Maybe String -> IO (Maybe (SpotifyFollowedArtistsResponse, Maybe String))
-    unfoldPages' u = case u of
-      Nothing -> return Nothing
-      Just url -> do
-        page <- loadPage url
-        return $ case next page of
-          Just url' -> Just (page, Just $ toString url')
-          Nothing -> Just (page, Nothing)
+    loadArtists :: String -> IO (SpotifyPagedResponse SpotifyArtist)
+    loadArtists url = artists <$> loadPage url
+
     loadPage :: String -> IO SpotifyFollowedArtistsResponse
     loadPage url = do
       res <-
