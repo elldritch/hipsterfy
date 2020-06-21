@@ -1,6 +1,7 @@
 module Hipsterfy (runServer, Options (..)) where
 
 import Control.Monad.Except (throwError)
+import qualified Control.Monad.Parallel as Parallel (mapM)
 import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
 import Hipsterfy.Artist (getArtistInsights)
 import Hipsterfy.Pages (accountPage, comparePage, loginPage)
@@ -116,5 +117,5 @@ server spotifyApp conn = do
     getFollowedArtists conn' bearerToken user = do
       creds <- liftIO $ getCredentials spotifyApp conn' user
       artists <- getFollowedSpotifyArtists creds
-      insights <- mapM (getArtistInsights conn' bearerToken) artists
+      insights <- liftIO $ Parallel.mapM (getArtistInsights conn' bearerToken) artists
       return $ zip artists insights

@@ -1,6 +1,7 @@
 module Hipsterfy.Pages (loginPage, accountPage, comparePage) where
 
 import Data.List (intersect)
+import Data.List.Split (chunksOf)
 import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), monthlyListeners, name)
 import Hipsterfy.User (User (..))
 import Relude hiding (Text, div, head)
@@ -8,7 +9,6 @@ import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Blaze.Html5 hiding (body)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
-import Data.List.Split (chunksOf)
 
 render :: Html -> LText
 render body = renderHtml $ docTypeHtml $ do
@@ -59,6 +59,7 @@ accountPage User {spotifyUserName, friendCode} = render $ do
             ! A.style "background-color: #1DB954;"
             ! A.type_ "submit"
           $ "Enter"
+        p ! A.class_ "mt-2 text-sm text-gray-500" $ "(This may take a long time. Loading artist listener counts is slow.)"
 
 comparePage :: [(SpotifyArtist, SpotifyArtistInsights)] -> [(SpotifyArtist, SpotifyArtistInsights)] -> LText
 comparePage yourFollowedArtists friendFollowedArtists = render $ do
@@ -68,8 +69,9 @@ comparePage yourFollowedArtists friendFollowedArtists = render $ do
       p "Artists you both follow, in ascending order by listeners:"
       br
       table ! A.class_ "w-full" $ do
-        thead $
-          tr $ do
+        thead
+          $ tr
+          $ do
             th ! A.class_ "font-medium text-left" $ "Artist"
             th ! A.class_ "font-medium text-right" $ "Monthly listeners"
         tbody $ mconcat $ fmap renderArtist both

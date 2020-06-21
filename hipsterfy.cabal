@@ -28,6 +28,7 @@ library
     , http-types         ==0.12.3
     , lens               ==4.19.2
     , monad-loops        ==0.4.3
+    , monad-parallel     ==0.7.2.3
     , mtl                ==2.2.2
     , postgresql-simple  ==0.6.2
     , random-strings     ==0.1.1.0
