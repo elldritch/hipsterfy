@@ -16,6 +16,7 @@ import Options.Applicative
     strOption,
   )
 import Relude
+import System.IO (BufferMode (NoBuffering), hSetBuffering)
 import System.Posix (Handler (Catch))
 import System.Exit (ExitCode (ExitSuccess))
 import System.Posix.Signals (installHandler, softwareTermination)
@@ -38,5 +39,6 @@ main :: IO ()
 main = do
   tid <- myThreadId
   _ <- installHandler softwareTermination (Catch $ throwTo tid ExitSuccess) Nothing
+  hSetBuffering stdout NoBuffering
   options <- execParser opts
   runServer options

@@ -6,7 +6,20 @@ import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
 import Hipsterfy.Artist (getArtistInsights)
 import Hipsterfy.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Session (endSession, getSession, startSession)
-import Hipsterfy.Spotify (AnonymousBearerToken, Scope, SpotifyApp (SpotifyApp), SpotifyArtist, SpotifyArtistInsights, getAnonymousBearerToken, getFollowedSpotifyArtists, scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
+import Hipsterfy.Spotify
+  ( AnonymousBearerToken,
+    Scope,
+    SpotifyApp (SpotifyApp),
+    SpotifyArtist,
+    SpotifyArtistInsights,
+    getAnonymousBearerToken,
+    getFollowedSpotifyArtists,
+    getSpotifyArtistsOfSavedAlbums,
+    getSpotifyArtistsOfSavedTracks,
+    scopeUserFollowRead,
+    scopeUserLibraryRead,
+    scopeUserTopRead,
+  )
 import Hipsterfy.User (User, createOAuthRedirect, createUser, getCredentials, getUserByFriendCode)
 import Network.Wai.Handler.Warp (defaultSettings, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
@@ -113,9 +126,15 @@ server spotifyApp conn = do
   where
     spotifyScopes :: [Scope]
     spotifyScopes = [scopeUserLibraryRead, scopeUserFollowRead, scopeUserTopRead]
+    -- TODO: we should load artists in the background when a user first logs in.
     getFollowedArtists :: (MonadIO m) => Connection -> AnonymousBearerToken -> User -> m [(SpotifyArtist, SpotifyArtistInsights)]
     getFollowedArtists conn' bearerToken user = do
       creds <- liftIO $ getCredentials spotifyApp conn' user
-      artists <- getFollowedSpotifyArtists creds
+      followedArtists <- getFollowedSpotifyArtists creds
+      trackArtists <- getSpotifyArtistsOfSavedTracks creds
+      putStrLn $ "trackArtists: " ++ show trackArtists
+      albumArtists <- getSpotifyArtistsOfSavedAlbums creds
+      putStrLn $ "albumArtists: " ++ show albumArtists
+      let artists = ordNub followedArtists
       insights <- liftIO $ Parallel.mapM (getArtistInsights conn' bearerToken) artists
       return $ zip artists insights

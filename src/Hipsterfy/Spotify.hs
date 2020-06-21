@@ -12,6 +12,8 @@ module Hipsterfy.Spotify
     getSpotifyUser,
     SpotifyArtist (..),
     getFollowedSpotifyArtists,
+    getSpotifyArtistsOfSavedTracks,
+    getSpotifyArtistsOfSavedAlbums,
     SpotifyArtistInsights (..),
     getSpotifyArtistInsights,
     AnonymousBearerToken,
@@ -21,7 +23,7 @@ where
 
 import Control.Lens ((.~), (^.))
 import Control.Monad.Loops (unfoldrM)
-import Data.Aeson ((.:), FromJSON (..), withObject)
+import Data.Aeson ((.:), FromJSON (..), eitherDecode, withObject)
 import Data.Text.Encoding.Base64 (encodeBase64)
 import Data.Time (NominalDiffTime, UTCTime, addUTCTime, getCurrentTime)
 import Network.HTTP.Types (renderSimpleQuery)
@@ -76,7 +78,7 @@ redirectURI SpotifyApp {clientID, redirectAddress} scopes oauthState =
             ("scope", encodeUtf8 $ renderScopes scopes)
           ]
 
-spotifyTokenURL :: Text
+spotifyTokenURL :: String
 spotifyTokenURL = "https://accounts.spotify.com/api/token"
 
 data SpotifyTokenResponse = SpotifyTokenResponse
@@ -116,7 +118,7 @@ requestAccessToken SpotifyApp {clientID, clientSecret} params = do
       asJSON
         =<< postWith
           (defaults & header "Authorization" .~ ["Basic " <> encodeUtf8 secret])
-          (toString spotifyTokenURL)
+          spotifyTokenURL
           params
   now <- liftIO getCurrentTime
   let body = res ^. responseBody
@@ -139,21 +141,30 @@ data SpotifyUser = SpotifyUser
   }
 
 instance FromJSON SpotifyUser where
-  parseJSON = withObject "user" $ \v ->
-    SpotifyUser <$> v .: "id" <*> v .: "display_name"
+  parseJSON = withObject "user" $ \o ->
+    SpotifyUser <$> o .: "id" <*> o .: "display_name"
 
-spotifyAPIURL :: Text
+spotifyAPIURL :: String
 spotifyAPIURL = "https://api.spotify.com/v1"
 
-getSpotifyUser :: (MonadIO m) => SpotifyCredentials -> m SpotifyUser
-getSpotifyUser SpotifyCredentials {accessToken} = do
+requestSpotifyAPI :: (MonadIO m, FromJSON t) => SpotifyCredentials -> String -> m t
+requestSpotifyAPI SpotifyCredentials {accessToken} url = do
   res <-
     liftIO $
-      asJSON
-        =<< getWith
-          (defaults & header "Authorization" .~ ["Bearer " <> encodeUtf8 accessToken])
-          (toString $ spotifyAPIURL <> "/me")
-  return $ res ^. responseBody
+      getWith
+        (defaults & header "Authorization" .~ ["Bearer " <> encodeUtf8 accessToken])
+        url
+  let x = eitherDecode $ res ^. responseBody
+  case x of
+    Right r -> return r
+    Left e -> do
+      putStrLn "JSON RESPONSE"
+      putStrLn $ decodeUtf8 $ res ^. responseBody
+      putStrLn "JSON ERROR"
+      error $ toText e
+
+getSpotifyUser :: (MonadIO m) => SpotifyCredentials -> m SpotifyUser
+getSpotifyUser creds = requestSpotifyAPI creds $ spotifyAPIURL <> "/me"
 
 data SpotifyArtist = SpotifyArtist
   { spotifyArtistID :: Text,
@@ -164,20 +175,29 @@ data SpotifyArtist = SpotifyArtist
     images :: [SpotifyArtistImage],
     popularity :: Int
   }
-  deriving (Show, Eq)
+  deriving (Show)
+
+instance Eq SpotifyArtist where
+  (==) = (==) `on` (spotifyArtistID :: SpotifyArtist -> Text)
+
+instance Ord SpotifyArtist where
+  compare = comparing (spotifyArtistID :: SpotifyArtist -> Text)
 
 instance FromJSON SpotifyArtist where
-  parseJSON = withObject "artist" $ \v -> do
-    spotifyArtistID <- v .: "id"
-    urls <- v .: "external_urls"
-    spotifyURL <- withObject "external_urls" (.: "spotify") urls
-    name <- v .: "name"
-    followersObject <- v .: "followers"
-    followers <- withObject "followers" (.: "total") followersObject
-    genres <- v .: "genres"
-    images <- v .: "images"
-    popularity <- v .: "popularity"
-    return SpotifyArtist {spotifyArtistID, spotifyURL, name, followers, genres, images, popularity}
+  parseJSON v = do
+    simplifiedArtist <- parseJSON v
+    let SpotifySimplifiedArtist {spotifyArtistID, spotifyURL, name} = simplifiedArtist
+    withObject
+      "artist"
+      ( \o -> do
+          followersObject <- o .: "followers"
+          followers <- withObject "followers" (.: "total") followersObject
+          genres <- o .: "genres"
+          images <- o .: "images"
+          popularity <- o .: "popularity"
+          return SpotifyArtist {spotifyArtistID, spotifyURL, name, followers, genres, images, popularity}
+      )
+      v
 
 data SpotifyArtistImage = SpotifyArtistImage
   { height :: Int,
@@ -188,6 +208,9 @@ data SpotifyArtistImage = SpotifyArtistImage
 
 instance FromJSON SpotifyArtistImage
 
+getSpotifyArtist :: (MonadIO m) => SpotifyCredentials -> String -> m SpotifyArtist
+getSpotifyArtist creds artistID = requestSpotifyAPI creds $ spotifyAPIURL <> "/artists/" <> artistID
+
 data SpotifyPagedResponse t = SpotifyPagedResponse
   { items :: [t],
     total :: Int,
@@ -196,13 +219,13 @@ data SpotifyPagedResponse t = SpotifyPagedResponse
   deriving (Show)
 
 instance (FromJSON t) => FromJSON (SpotifyPagedResponse t) where
-  parseJSON = withObject "Spotify API response" $ \v -> do
-    items <- parseJSON =<< v .: "items"
-    next <- v .: "next"
-    total <- v .: "total"
+  parseJSON = withObject "Spotify API response" $ \o -> do
+    items <- parseJSON =<< o .: "items"
+    next <- o .: "next"
+    total <- o .: "total"
     return SpotifyPagedResponse {items, next, total}
 
-unfoldPages :: (String -> IO (SpotifyPagedResponse t)) -> String -> IO [t]
+unfoldPages :: (MonadIO m) => (String -> m (SpotifyPagedResponse t)) -> String -> m [t]
 unfoldPages loadPage url = do
   pages <- unfoldrM unfoldPages' $ Just url
   return $ concatMap items pages
@@ -216,6 +239,14 @@ unfoldPages loadPage url = do
             Just nextURL -> Just (page, Just $ toString nextURL)
             Nothing -> Just (page, Nothing)
 
+requestSpotifyAPIPages :: (MonadIO m, FromJSON v) => SpotifyCredentials -> String -> m [v]
+requestSpotifyAPIPages creds = requestSpotifyAPIPages' creds id
+
+requestSpotifyAPIPages' :: (MonadIO m, FromJSON t) => SpotifyCredentials -> (t -> SpotifyPagedResponse v) -> String -> m [v]
+requestSpotifyAPIPages' creds resToPage = unfoldPages responseToPages
+  where
+    responseToPages u = resToPage <$> requestSpotifyAPI creds u
+
 {- HLINT ignore SpotifyFollowedArtistsResponse "Use newtype instead of data" -}
 data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
   { artists :: SpotifyPagedResponse SpotifyArtist
@@ -225,20 +256,62 @@ data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
 instance FromJSON SpotifyFollowedArtistsResponse
 
 getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
-getFollowedSpotifyArtists SpotifyCredentials {accessToken} =
-  liftIO $ unfoldPages loadArtists $ toString $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
-  where
-    loadArtists :: String -> IO (SpotifyPagedResponse SpotifyArtist)
-    loadArtists url = artists <$> loadPage url
+getFollowedSpotifyArtists creds =
+  requestSpotifyAPIPages' creds artists $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
 
-    loadPage :: String -> IO SpotifyFollowedArtistsResponse
-    loadPage url = do
-      res <-
-        asJSON
-          =<< getWith
-            (defaults & header "Authorization" .~ ["Bearer " <> encodeUtf8 accessToken])
-            url
-      return $ res ^. responseBody
+data SpotifySimplifiedArtist = SpotifySimplifiedArtist
+  { spotifyArtistID :: Text,
+    spotifyURL :: Text,
+    name :: Text
+  }
+  deriving (Show)
+
+instance FromJSON SpotifySimplifiedArtist where
+  parseJSON = withObject "simplified artist object" $ \o -> do
+    spotifyArtistID <- o .: "id"
+    urls <- o .: "external_urls"
+    spotifyURL <- withObject "external_urls" (.: "spotify") urls
+    name <- o .: "name"
+    return SpotifySimplifiedArtist {spotifyArtistID, spotifyURL, name}
+
+instance Eq SpotifySimplifiedArtist where
+  (==) = (==) `on` (spotifyArtistID :: SpotifySimplifiedArtist -> Text)
+
+instance Ord SpotifySimplifiedArtist where
+  compare = comparing (spotifyArtistID :: SpotifySimplifiedArtist -> Text)
+
+{- HLINT ignore SpotifyTrack "Use newtype instead of data" -}
+data SpotifyTrack = SpotifyTrack
+  { spotifyTrackArtists :: [SpotifySimplifiedArtist]
+  }
+
+instance FromJSON SpotifyTrack where
+  parseJSON = withObject "track item" $ \item -> do
+    track <- item .: "track"
+    spotifyTrackArtists <- withObject "track" (\t -> (t .: "artists") >>= parseJSON) track
+    return SpotifyTrack {spotifyTrackArtists}
+
+getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m [SpotifySimplifiedArtist]
+getSpotifyArtistsOfSavedTracks creds = do
+  tracks <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/tracks"
+  -- TODO: maybe we should hit the database to check the cache here?
+  return $ ordNub $ concatMap spotifyTrackArtists tracks
+
+{- HLINT ignore SpotifyAlbum "Use newtype instead of data" -}
+data SpotifyAlbum = SpotifyAlbum
+  { spotifyAlbumArtists :: [SpotifySimplifiedArtist]
+  }
+
+instance FromJSON SpotifyAlbum where
+  parseJSON = withObject "album item" $ \item -> do
+    album <- item .: "album"
+    spotifyAlbumArtists <- withObject "album" (\t -> (t .: "artists") >>= parseJSON) album
+    return SpotifyAlbum {spotifyAlbumArtists}
+
+getSpotifyArtistsOfSavedAlbums :: (MonadIO m) => SpotifyCredentials -> m [SpotifySimplifiedArtist]
+getSpotifyArtistsOfSavedAlbums creds = do
+  albums <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/albums"
+  return $ ordNub $ concatMap spotifyAlbumArtists albums
 
 data SpotifyAnonymousBearerTokenResponse = SpotifyAnonymousBearerTokenResponse
   { clientId :: Text,
@@ -268,8 +341,8 @@ instance FromJSON SpotifyArtistInsights where
     insights <- res .: "artistInsights"
     withObject
       "artistInsights"
-      ( \v -> do
-          monthlyListeners <- v .: "monthly_listeners"
+      ( \o -> do
+          monthlyListeners <- o .: "monthly_listeners"
           return $ SpotifyArtistInsights {monthlyListeners}
       )
       insights
