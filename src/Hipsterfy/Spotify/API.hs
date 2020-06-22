@@ -9,7 +9,7 @@ module Hipsterfy.Spotify.API
 where
 
 import Control.Lens ((.~))
-import Control.Monad.Loops (unfoldrM)
+import qualified Control.Monad.Parallel as Parallel (mapM)
 import Data.Aeson ((.:), FromJSON (..), withObject)
 import Hipsterfy.Spotify.Auth (SpotifyCredentials (..))
 import Hipsterfy.Spotify.Internal (requestAsJSON)
@@ -38,25 +38,18 @@ instance (FromJSON t) => FromJSON (SpotifyPagedResponse t) where
     total <- o .: "total"
     return SpotifyPagedResponse {items, next, total}
 
--- TODO: can we fetch each offset in parallel, to make this faster at the cost of correctness?
-unfoldPages :: (MonadIO m) => (String -> m (SpotifyPagedResponse t)) -> String -> m [t]
-unfoldPages loadPage url = do
-  pages <- unfoldrM unfoldPages' $ Just url
-  return $ concatMap items pages
-  where
-    unfoldPages' u =
-      case u of
-        Nothing -> return Nothing
-        Just currURL -> do
-          page <- loadPage currURL
-          return $ case next page of
-            Just nextURL -> Just (page, Just $ toString nextURL)
-            Nothing -> Just (page, Nothing)
-
-requestSpotifyAPIPages :: (MonadIO m, FromJSON v) => SpotifyCredentials -> String -> m [v]
+requestSpotifyAPIPages :: (MonadIO m, FromJSON v) => SpotifyCredentials -> String -> m (Int, [v])
 requestSpotifyAPIPages creds = requestSpotifyAPIPages' creds id
 
-requestSpotifyAPIPages' :: (MonadIO m, FromJSON t) => SpotifyCredentials -> (t -> SpotifyPagedResponse v) -> String -> m [v]
-requestSpotifyAPIPages' creds resToPage = unfoldPages loadPage
+requestSpotifyAPIPages' :: (MonadIO m, FromJSON t) => SpotifyCredentials -> (t -> SpotifyPagedResponse v) -> String -> m (Int, [v])
+requestSpotifyAPIPages' creds resToPage url = do
+  firstPage <- loadPage url
+  let t = total firstPage
+  -- WARNING: modifying the URL as a string this way is dangerous - we basically
+  -- assume that the URL ends with a querystring.
+  -- TODO: build a DSL for representing Spotify API queries.
+  let pageURLs = fmap (\offset -> url <> "&offset=" <> show offset) [50, 100 .. t]
+  pages <- liftIO $ Parallel.mapM loadPage pageURLs
+  return (t, concat $ items <$> pages)
   where
-    loadPage url = resToPage <$> requestSpotifyAPI creds url
+    loadPage u = resToPage <$> requestSpotifyAPI creds u

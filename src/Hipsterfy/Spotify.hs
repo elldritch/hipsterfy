@@ -11,7 +11,7 @@ module Hipsterfy.Spotify
 where
 
 import Control.Lens ((.~))
-import Data.Aeson ((.:), FromJSON (..), withObject)
+import Data.Aeson ((.:?), (.:), FromJSON (..), withObject)
 import Hipsterfy.Spotify.API (SpotifyPagedResponse, requestAsJSON, requestSpotifyAPI, requestSpotifyAPIPages, requestSpotifyAPIPages', spotifyAPIURL)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken (..), SpotifyCredentials (..))
 import Network.Wreq (defaults, getWith, header)
@@ -69,7 +69,7 @@ instance FromJSON SpotifyFollowedArtistsResponse
 
 getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getFollowedSpotifyArtists creds =
-  requestSpotifyAPIPages' creds artists $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
+  fmap snd $ requestSpotifyAPIPages' creds artists $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
 
 {- HLINT ignore SpotifyTrack "Use newtype instead of data" -}
 data SpotifyTrack = SpotifyTrack
@@ -84,8 +84,8 @@ instance FromJSON SpotifyTrack where
 
 getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getSpotifyArtistsOfSavedTracks creds = do
-  tracks <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/tracks"
-  return $ ordNub $ concatMap spotifyTrackArtists tracks
+  tracks <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/tracks?limit=50"
+  return $ ordNub $ concatMap spotifyTrackArtists $ snd tracks
 
 {- HLINT ignore SpotifyAlbum "Use newtype instead of data" -}
 data SpotifyAlbum = SpotifyAlbum
@@ -100,8 +100,8 @@ instance FromJSON SpotifyAlbum where
 
 getSpotifyArtistsOfSavedAlbums :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getSpotifyArtistsOfSavedAlbums creds = do
-  albums <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/albums"
-  return $ ordNub $ concatMap spotifyAlbumArtists albums
+  albums <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/albums?limit=50"
+  return $ ordNub $ concatMap spotifyAlbumArtists $ snd albums
 
 {- HLINT ignore SpotifyArtistInsights "Use newtype instead of data" -}
 data SpotifyArtistInsights = SpotifyArtistInsights
@@ -115,8 +115,9 @@ instance FromJSON SpotifyArtistInsights where
     withObject
       "artistInsights"
       ( \o -> do
-          monthlyListeners <- o .: "monthly_listeners"
-          return $ SpotifyArtistInsights {monthlyListeners}
+          listeners <- o .:? "monthly_listeners"
+          followers <- o .: "follower_count"
+          return $ SpotifyArtistInsights {monthlyListeners = fromMaybe followers listeners}
       )
       insights
 
