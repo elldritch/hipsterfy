@@ -2,23 +2,28 @@ module Hipsterfy.User
   ( createOAuthRedirect,
     User (..),
     createUser,
+    getUserByID,
     getUserBySpotifyID,
     getUserByFriendCode,
     getCredentials,
+    setUserFollowUpdating,
+    getFollowedArtists,
   )
 where
 
 import Control.Monad.Except (liftEither, throwError)
-import Data.Time (getCurrentTime)
-import Database.PostgreSQL.Simple (Connection, Query, ToRow, execute, query)
-import Database.PostgreSQL.Simple.Types (Only (Only))
+import Data.Time (UTCTime, getCurrentTime)
+import Database.PostgreSQL.Simple (Connection, Only (Only), Query, ToRow, execute, query)
 import Hipsterfy.Spotify
+  ( SpotifyArtist,
+    SpotifyUser (..),
+    getSpotifyUser,
+  )
+import Hipsterfy.Spotify.Auth
   ( Scope,
     SpotifyApp,
     SpotifyCredentials (..),
-    SpotifyUser (..),
-    getSpotifyUser,
-    redirectURI,
+    authorizationURL,
     requestAccessTokenFromAuthorizationCode,
     requestAccessTokenFromRefreshToken,
   )
@@ -40,7 +45,7 @@ createOAuthRedirect app conn scopes = do
   oauthState <- liftIO $ toText <$> randomWord randomASCII 20
   now <- liftIO getCurrentTime
   void $ liftIO $ execute conn "INSERT INTO spotify_oauth_request (oauth2_state, created_at) VALUES (?, ?)" (oauthState, now)
-  return $ redirectURI app scopes oauthState
+  return $ authorizationURL app scopes oauthState
 
 createUser :: (MonadIO m) => SpotifyApp -> Connection -> Text -> Text -> m (Either Text User)
 createUser app conn authCode oauthState =
@@ -86,6 +91,17 @@ createUser app conn authCode oauthState =
         )
 
 -- Retrieval.
+
+getUserByID :: (MonadIO m) => Connection -> Int -> m (Maybe User)
+getUserByID conn userID =
+  getUser
+    conn
+    "SELECT\
+    \ id, friend_code,\
+    \ spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
+    \ FROM hipsterfy_user\
+    \ WHERE id = ?"
+    (Only userID)
 
 getUserBySpotifyID :: (MonadIO m) => Connection -> Text -> m (Maybe User)
 getUserBySpotifyID conn spotifyUserID =
@@ -159,3 +175,11 @@ getCredentials app conn User {userID, spotifyCredentials} = do
             refreshToken,
             userID
           )
+
+setUserFollowUpdating :: (MonadIO m) => Connection -> User -> UTCTime -> Int -> m ()
+setUserFollowUpdating conn user started total = undefined
+
+data UpdateStatus = UpdatedAt UTCTime | InProgress Int Int
+
+getFollowedArtists :: (MonadIO m) => Connection -> User -> m (UpdateStatus, [SpotifyArtist])
+getFollowedArtists conn user = undefined

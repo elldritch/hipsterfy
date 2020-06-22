@@ -1,21 +1,24 @@
-module Hipsterfy (runServer, Options (..)) where
+module Hipsterfy.Server (runServer, server, Options (..)) where
 
 import Control.Monad.Except (throwError)
 import qualified Control.Monad.Parallel as Parallel (mapM)
+import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
 import Hipsterfy.Artist (getArtistInsights)
 import Hipsterfy.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify
-  ( AnonymousBearerToken,
-    Scope,
-    SpotifyApp (SpotifyApp),
-    SpotifyArtist,
+  ( SpotifyArtist,
     SpotifyArtistInsights,
-    getAnonymousBearerToken,
     getFollowedSpotifyArtists,
     getSpotifyArtistsOfSavedAlbums,
     getSpotifyArtistsOfSavedTracks,
+  )
+import Hipsterfy.Spotify.Auth
+  ( AnonymousBearerToken,
+    Scope,
+    SpotifyApp (..),
+    getAnonymousBearerToken,
     scopeUserFollowRead,
     scopeUserLibraryRead,
     scopeUserTopRead,
@@ -65,7 +68,9 @@ server spotifyApp conn = do
   S.get "/" $ do
     user <- getSession conn
     case user of
-      Just u -> html $ accountPage u
+      Just u -> do
+        -- TODO: if logged in, check and load artists in the background.
+        html $ accountPage u
       Nothing -> html loginPage
 
   -- Authorization redirect. Generate a new user's OAuth secret and friend code. Redirect to Spotify.
@@ -130,11 +135,19 @@ server spotifyApp conn = do
     getFollowedArtists :: (MonadIO m) => Connection -> AnonymousBearerToken -> User -> m [(SpotifyArtist, SpotifyArtistInsights)]
     getFollowedArtists conn' bearerToken user = do
       creds <- liftIO $ getCredentials spotifyApp conn' user
+      a <- liftIO getCurrentTime
+      putStrLn $ "a: " ++ show a
       followedArtists <- getFollowedSpotifyArtists creds
+      b <- liftIO getCurrentTime
+      putStrLn $ "b: " ++ show b
       trackArtists <- getSpotifyArtistsOfSavedTracks creds
-      putStrLn $ "trackArtists: " ++ show trackArtists
+      c <- liftIO getCurrentTime
+      putStrLn $ "c: " ++ show c
       albumArtists <- getSpotifyArtistsOfSavedAlbums creds
-      putStrLn $ "albumArtists: " ++ show albumArtists
-      let artists = ordNub followedArtists
+      d <- liftIO getCurrentTime
+      putStrLn $ "d: " ++ show d
+      let artists = ordNub $ trackArtists ++ albumArtists ++ followedArtists
       insights <- liftIO $ Parallel.mapM (getArtistInsights conn' bearerToken) artists
+      e <- liftIO getCurrentTime
+      putStrLn $ "e: " ++ show e
       return $ zip artists insights

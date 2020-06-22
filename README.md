@@ -20,7 +20,7 @@ Figure out which of your Spotify artist preferences are most hipster.
 
 ### Running on raw metal
 
-#### Create the database
+#### Create and run the database
 
 We use provide a Dockerfile for the database image for convenience. You may also choose to run your own Postgres instance. The schema migration is at [`./schema.sql`](./schema.sql).
 
@@ -41,6 +41,12 @@ In the the future, you can start the database with:
 sudo docker start hipsterfy-db
 ```
 
+#### Run the job queue server
+
+```
+sudo docker run --name hipsterfy-jobqueue -p 7419:7419 -p 7420:7420 -e FAKTORY_PASSWORD=hunter2 contribsys/faktory:1.4.0
+```
+
 #### Build and run the server
 
 Make sure to populate the flags with your own:
@@ -50,8 +56,19 @@ Make sure to populate the flags with your own:
 - Spotify app client ID and secret
 
 ```bash
-cabal-fmt --inplace hipsterfy.cabal
 cabal run hipsterfy -- --host http://localhost --port 8000 --db 'postgresql://hipsterfy:hunter2@localhost:5432' --client_id XXXX --client_secret XXXX
+```
+
+#### Build and run the worker
+
+Make sure to populate the flags with your own:
+
+- Server host and port
+- Postgres database connection string
+- Spotify app client ID and secret
+
+```bash
+cabal run hipsterfy-worker -- --db 'postgresql://hipsterfy:hunter2@localhost:5432' --faktory_host localhost --faktory_port 7419 --faktory_password hunter2 --client_id XXXX --client_secret XXXX
 ```
 
 ### Running with `docker-compose`
@@ -60,4 +77,34 @@ Docker Compose will start both containers for you.
 
 ```bash
 sudo docker-compose -p hipsterfy-dev up --build
+```
+
+### Generating documentation
+
+Run Haddock to generate documentation for both the current project and its dependencies.
+
+```
+cabal haddock --haddock-all --enable-documentation
+```
+
+The output will have a line similar to:
+
+```
+.../hipsterfy/dist-newstyle/build/x86_64-linux/ghc-8.8.3/hipsterfy-0.1.0.0/noopt/doc/html/hipsterfy/index.html
+```
+
+Open this in your browser to view the documentation.
+
+### Running tests
+
+```
+cabal test --test-show-details=streaming --test-options='foo bar'
+```
+
+### Formatting code
+
+For code, use Ormolu.
+
+```
+cabal-fmt --inplace hipsterfy.cabal
 ```

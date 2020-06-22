@@ -6,3 +6,5 @@ cradle:
       component: "exe:hipsterfy-worker"
     - path: "./src"
       component: "lib:hipsterfy"
+    - path: "./test"
+      component: "test:tests"

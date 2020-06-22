@@ -29,5 +29,16 @@ services:
     volumes:
       - "hipsterfy-db-data:/var/lib/postgresql/data"
 
+  jobqueue:
+    image: contribsys/faktory:1.4.0
+    environment:
+      FAKTORY_PASSWORD: ${HIPSTERFY_JOBQUEUE_PASSWORD}
+    ports:
+      - "7419:7419"
+      - "7420:7420"
+    volumes:
+      - "hipsterfy-jobqueue-data:/var/lib/faktory"
+
 volumes:
   hipsterfy-db-data:
+  hipsterfy-jobqueue-data:

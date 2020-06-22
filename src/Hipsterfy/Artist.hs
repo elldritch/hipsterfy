@@ -2,8 +2,8 @@ module Hipsterfy.Artist (getArtistInsights, refreshArtistInsights) where
 
 import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Only (..), execute, query)
-import Hipsterfy.Spotify (AnonymousBearerToken, SpotifyArtist (..), SpotifyArtistInsights (..), getSpotifyArtistInsights)
-import Database.PostgreSQL.Simple.Types (PGArray (..))
+import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), getSpotifyArtistInsights)
+import Hipsterfy.Spotify.Auth (AnonymousBearerToken)
 import Relude
 
 getArtistInsights :: (MonadIO m) => Connection -> AnonymousBearerToken -> SpotifyArtist -> m SpotifyArtistInsights
@@ -26,7 +26,7 @@ getArtistInsights conn bearerToken artist@SpotifyArtist {spotifyArtistID} = do
     _ -> error "impossible: select of single SpotifyArtistInsights returned more than 1 row"
 
 refreshArtistInsights :: (MonadIO m) => Connection -> AnonymousBearerToken -> SpotifyArtist -> m SpotifyArtistInsights
-refreshArtistInsights conn bearerToken artist@SpotifyArtist {name, spotifyArtistID, spotifyURL, followers, genres, popularity} = do
+refreshArtistInsights conn bearerToken artist@SpotifyArtist {name, spotifyArtistID, spotifyURL} = do
   -- Save artist profile.
   now <- liftIO getCurrentTime
   artistRows <-
@@ -34,12 +34,12 @@ refreshArtistInsights conn bearerToken artist@SpotifyArtist {name, spotifyArtist
       query
         conn
         "INSERT INTO spotify_artist\
-        \ (name, spotify_artist_id, spotify_url, followers, genres, popularity, last_updated, created_at)\
+        \ (name, spotify_artist_id, spotify_url, created_at)\
         \ VALUES\
-        \ (?, ?, ?, ?, ?, ?, ?, ?)\
-        \ ON CONFLICT (spotify_artist_id) DO UPDATE SET followers = ?, genres = ?, popularity = ?, last_updated = ?\
+        \ (?, ?, ?, ?)\
+        \ ON CONFLICT (spotify_artist_id) DO UPDATE SET name = ?\
         \ RETURNING id"
-        (name, spotifyArtistID, spotifyURL, followers, PGArray genres, popularity, now, now, followers, PGArray genres, popularity, now)
+        (name, spotifyArtistID, spotifyURL, now, name)
   artistID <- case artistRows of
     [Only artistID] -> return artistID
     _ -> error "impossible: insert of single SpotifyArtist returned 0 or more than 1 row"

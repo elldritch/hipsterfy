@@ -3,7 +3,7 @@ module Hipsterfy.Session (getSession, startSession, endSession) where
 import Data.Time (getCurrentTime, secondsToDiffTime)
 import Database.PostgreSQL.Simple (Connection, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
-import Hipsterfy.Spotify (SpotifyCredentials (..))
+import Hipsterfy.Spotify.Auth (SpotifyCredentials (..))
 import Hipsterfy.User (User (..))
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
@@ -20,7 +20,6 @@ getSession conn = do
   case cookie of
     Nothing -> return Nothing
     Just c -> do
-      -- TODO: handle exception case where user is not found.
       rows <-
         liftIO $
           query

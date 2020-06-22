@@ -1,7 +1,7 @@
 module Main (main) where
 
 import Control.Concurrent (myThreadId, throwTo)
-import Hipsterfy.Server (Options (Options), runServer)
+import Hipsterfy.Worker (Options(..), runWorker)
 import Options.Applicative
   ( ParserInfo,
     auto,
@@ -24,15 +24,18 @@ opts :: ParserInfo Options
 opts =
   info
     (options <**> helper)
-    (briefDesc <> progDesc "Hipsterfy server")
+    (briefDesc <> progDesc "Hipsterfy worker")
   where
     options =
       Options
-        <$> strOption (long "host")
-        <*> option auto (long "port")
-        <*> strOption (long "db")
+        <$> strOption (long "db")
+        <*> strOption (long "faktory_host")
+        <*> option auto (long "faktory_port")
+        <*> optional (strOption $ long "faktory_password")
         <*> strOption (long "client_id")
         <*> strOption (long "client_secret")
+
+-- TODO: add health check
 
 main :: IO ()
 main = do
@@ -40,4 +43,4 @@ main = do
   _ <- installHandler softwareTermination (Catch $ throwTo tid ExitSuccess) Nothing
   hSetBuffering stdout NoBuffering
   options <- execParser opts
-  runServer options
+  runWorker options

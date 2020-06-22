@@ -1,0 +1,4 @@
+JSONError: Error in $: key "monthly_listeners" not found
+CallStack (from HasCallStack):
+  error, called at src/Relude/Debug.hs:218:11 in relude-0.7.0.0-40ce62cc329110988529a598b9704605b8633119d1331105ec8496b0fbee3b76:Relude.Debug
+  error, called at src/Hipsterfy/Spotify/Internal.hs:17:7 in hipsterfy-0.1.0.0-inplace:Hipsterfy.Spotify.Internal
