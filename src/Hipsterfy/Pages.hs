@@ -3,7 +3,7 @@ module Hipsterfy.Pages (loginPage, accountPage, comparePage) where
 import Data.List (intersect)
 import Data.List.Split (chunksOf)
 import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), monthlyListeners, name)
-import Hipsterfy.User (User (..))
+import Hipsterfy.User (UpdateStatus (..), User (..))
 import Relude hiding (Text, div, head)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Blaze.Html5 hiding (body, contents)
@@ -31,7 +31,7 @@ loginPage :: LText
 loginPage = render $ do
   div ! A.class_ "min-h-screen flex flex-col py-12" $ do
     div ! A.class_ "mx-auto text-center" $ do
-      h1 ! A.class_ "text-3xl mb02" $ "Hipsterfy"
+      h1 ! A.class_ "text-3xl mb-2" $ "Hipsterfy"
       p ! A.class_ "mt-2" $ "Which hipsters do you and your friends both follow?"
       div ! A.class_ "mt-6" $ do
         a
@@ -40,8 +40,8 @@ loginPage = render $ do
           ! A.href "/authorize"
           $ "Sign in with Spotify"
 
-accountPage :: User -> LText
-accountPage User {spotifyUserName, friendCode} = container $ do
+accountPage :: User -> (UpdateStatus, [(SpotifyArtist, Maybe SpotifyArtistInsights)]) -> LText
+accountPage User {spotifyUserName, friendCode} (status, artists) = container $ do
   p $
     "Logged in as "
       <> toHtml spotifyUserName
@@ -64,30 +64,40 @@ accountPage User {spotifyUserName, friendCode} = container $ do
         ! A.style "background-color: #1DB954;"
         ! A.type_ "submit"
       $ "Enter"
-    p ! A.class_ "mt-2 text-sm text-gray-500 " $ "(This may take a long time. Loading artist listener counts is slow.)"
+    p ! A.class_ "mt-2 text-sm text-gray-500 " $ "Comparison may take a bit. Loading artist listener counts is slow."
+    h2 ! A.class_ "text-2xl mt-4 mb-2" $ "Artists you follow"
+    case status of
+      UpdatedAt lastUpdated -> p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Last updated at " <> show lastUpdated <> "."
+      InProgress finished total -> do
+        p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Some artists are still loading (" <> show finished <> " out of ~" <> show total <> " complete)."
+        p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Refresh for a more recent view."
+    artistTable artists
 
 comparePage :: [(SpotifyArtist, SpotifyArtistInsights)] -> [(SpotifyArtist, SpotifyArtistInsights)] -> LText
 comparePage yourFollowedArtists friendFollowedArtists = container $ do
   p "Artists you both follow, in ascending order by listeners:"
   br
+  artistTable $ second Just <$> intersect yourFollowedArtists friendFollowedArtists
+  br
+  a ! A.class_ "underline text-blue-700" ! A.href "/" $ "Go back"
+
+artistTable :: [(SpotifyArtist, Maybe SpotifyArtistInsights)] -> Html
+artistTable artists =
   table ! A.class_ "w-full" $ do
     thead
       $ tr
       $ do
         th ! A.class_ "font-medium text-left" $ "Artist"
         th ! A.class_ "font-medium text-right" $ "Monthly listeners"
-    tbody $ mconcat $ fmap renderArtist both
-  br
-  a ! A.class_ "underline text-blue-700" ! A.href "/" $ "Go back"
+    tbody $ mconcat $ fmap renderArtist $ sortHipster $ ordNub artists
   where
+    sortHipster :: [(SpotifyArtist, Maybe SpotifyArtistInsights)] -> [(SpotifyArtist, Maybe SpotifyArtistInsights)]
+    sortHipster = sortOn $ monthlyListeners . fromMaybe (SpotifyArtistInsights 0) . snd
+    renderArtist :: (SpotifyArtist, Maybe SpotifyArtistInsights) -> Html
+    renderArtist (SpotifyArtist {spotifyURL, name}, insights) = tr $ do
+      td $ a ! A.class_ "underline text-blue-700" ! A.href (textValue spotifyURL) $ toHtml name
+      td ! A.class_ "text-right" $ toHtml $ case insights of
+        Just SpotifyArtistInsights {monthlyListeners} -> formatInt monthlyListeners
+        Nothing -> "?"
     formatInt :: Int -> LText
     formatInt = toLText . reverse . intercalate "," . chunksOf 3 . reverse . show
-    renderArtist :: (SpotifyArtist, SpotifyArtistInsights) -> Html
-    renderArtist (SpotifyArtist {spotifyURL, name}, SpotifyArtistInsights {monthlyListeners}) = tr $ do
-      td $ a ! A.class_ "underline text-blue-700" ! A.href (textValue spotifyURL) $ toHtml name
-      td ! A.class_ "text-right" $ toHtml $ formatInt monthlyListeners
-    sortHipster :: [(SpotifyArtist, SpotifyArtistInsights)] -> [(SpotifyArtist, SpotifyArtistInsights)]
-    sortHipster = sortOn $ monthlyListeners . snd
-    yours = sortHipster yourFollowedArtists
-    friends = sortHipster friendFollowedArtists
-    both = sortHipster $ intersect yours friends

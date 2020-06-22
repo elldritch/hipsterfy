@@ -11,7 +11,7 @@ module Hipsterfy.Spotify
 where
 
 import Control.Lens ((.~))
-import Data.Aeson ((.:?), (.:), FromJSON (..), withObject)
+import Data.Aeson ((.:), (.:?), FromJSON (..), withObject)
 import Hipsterfy.Spotify.API (SpotifyPagedResponse, requestAsJSON, requestSpotifyAPI, requestSpotifyAPIPages, requestSpotifyAPIPages', spotifyAPIURL)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken (..), SpotifyCredentials (..))
 import Network.Wreq (defaults, getWith, header)
@@ -107,7 +107,7 @@ getSpotifyArtistsOfSavedAlbums creds = do
 data SpotifyArtistInsights = SpotifyArtistInsights
   { monthlyListeners :: Int
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 instance FromJSON SpotifyArtistInsights where
   parseJSON = withObject "artist insights response" $ \res -> do

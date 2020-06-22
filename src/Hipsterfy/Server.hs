@@ -4,7 +4,11 @@ import Control.Monad.Except (throwError)
 import qualified Control.Monad.Parallel as Parallel (mapM)
 import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
-import Hipsterfy.Artist (getArtistInsights)
+import Faktory.Client (Client, newClient)
+import Faktory.Settings (ConnectionInfo (..), Queue, Settings (..))
+import qualified Faktory.Settings as Faktory (defaultSettings)
+import Hipsterfy.Artist (getArtistInsights, getCachedArtistInsights)
+import Hipsterfy.Jobs.UpdateUser (enqueueUpdateUser, updateUserQueue)
 import Hipsterfy.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify
@@ -23,7 +27,7 @@ import Hipsterfy.Spotify.Auth
     scopeUserLibraryRead,
     scopeUserTopRead,
   )
-import Hipsterfy.User (User, createOAuthRedirect, createUser, getCredentials, getUserByFriendCode)
+import Hipsterfy.User (User, createOAuthRedirect, createUser, getCredentials, getFollowedArtists, getUserByFriendCode)
 import Network.Wai.Handler.Warp (defaultSettings, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import Relude
@@ -36,30 +40,44 @@ data Options = Options
     port :: Int,
     pgConn :: Text,
     clientID :: Text,
-    clientSecret :: Text
+    clientSecret :: Text,
+    faktoryHost :: Text,
+    faktoryPort :: Int,
+    faktoryPassword :: Maybe Text
   }
   deriving (Show)
 
 runServer :: Options -> IO ()
-runServer Options {host, port, pgConn, clientID, clientSecret} = do
+runServer Options {host, port, pgConn, clientID, clientSecret, faktoryHost, faktoryPassword, faktoryPort} = do
   conn <- connectPostgreSQL $ encodeUtf8 pgConn
+  updateUserClient <- newClient (settingsForQ updateUserQueue) Nothing
 
   putStrLn $ "Starting server at: " `mappend` show address
   scottyOpts
     S.Options {verbose = 0, settings = defaultSettings & setPort port}
-    $ server spotifyApp conn
+    $ server spotifyApp updateUserClient conn
   where
     address :: Text
     address = host `mappend` case port of
       80 -> ""
       other -> ":" `mappend` show other
-    callbackURL :: Text
-    callbackURL = address <> "/authorize/callback"
     spotifyApp :: SpotifyApp
-    spotifyApp = SpotifyApp clientID clientSecret callbackURL
+    spotifyApp = SpotifyApp {clientID, clientSecret, redirectURI = address <> "/authorize/callback"}
+    settingsForQ :: Queue -> Settings
+    settingsForQ queue =
+      Faktory.defaultSettings
+        { settingsQueue = queue,
+          settingsConnection =
+            ConnectionInfo
+              { connectionInfoTls = False,
+                connectionInfoHostName = toString faktoryHost,
+                connectionInfoPassword = toString <$> faktoryPassword,
+                connectionInfoPort = fromInteger $ toInteger faktoryPort
+              }
+        }
 
-server :: SpotifyApp -> Connection -> ScottyM ()
-server spotifyApp conn = do
+server :: SpotifyApp -> Client -> Connection -> ScottyM ()
+server spotifyApp updateUserClient conn = do
   middleware logStdoutDev
 
   -- Home page. Check cookies to see if logged in.
@@ -69,8 +87,11 @@ server spotifyApp conn = do
     user <- getSession conn
     case user of
       Just u -> do
-        -- TODO: if logged in, check and load artists in the background.
-        html $ accountPage u
+        -- TODO: why is this so slow?
+        void $ enqueueUpdateUser updateUserClient u
+        (status, followed) <- getFollowedArtists conn u
+        insights <- mapM (getCachedArtistInsights conn) followed
+        html $ accountPage u (status, zip followed insights)
       Nothing -> html loginPage
 
   -- Authorization redirect. Generate a new user's OAuth secret and friend code. Redirect to Spotify.
@@ -117,9 +138,13 @@ server spotifyApp conn = do
       Nothing -> throwError $ Redirect "/"
 
     -- Load followed artists.
+    -- TODO: migrate this to the new `getFollowedArtists.
+    -- We should basically never do any API calls on-path to a request - we
+    -- should always be using cached values, and account for cache
+    -- staleness/unavailability.
     bearerToken <- getAnonymousBearerToken
-    yourArtists <- getFollowedArtists conn bearerToken user
-    friendArtists <- getFollowedArtists conn bearerToken friend
+    yourArtists <- getFollowedArtists' conn bearerToken user
+    friendArtists <- getFollowedArtists' conn bearerToken friend
 
     -- Render page.
     html $ comparePage yourArtists friendArtists
@@ -132,8 +157,8 @@ server spotifyApp conn = do
     spotifyScopes :: [Scope]
     spotifyScopes = [scopeUserLibraryRead, scopeUserFollowRead, scopeUserTopRead]
     -- TODO: we should load artists in the background when a user first logs in.
-    getFollowedArtists :: (MonadIO m) => Connection -> AnonymousBearerToken -> User -> m [(SpotifyArtist, SpotifyArtistInsights)]
-    getFollowedArtists conn' bearerToken user = do
+    getFollowedArtists' :: (MonadIO m) => Connection -> AnonymousBearerToken -> User -> m [(SpotifyArtist, SpotifyArtistInsights)]
+    getFollowedArtists' conn' bearerToken user = do
       creds <- liftIO $ getCredentials spotifyApp conn' user
       a <- liftIO getCurrentTime
       putStrLn $ "a: " ++ show a

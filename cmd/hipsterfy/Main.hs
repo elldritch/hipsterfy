@@ -33,6 +33,9 @@ opts =
         <*> strOption (long "db")
         <*> strOption (long "client_id")
         <*> strOption (long "client_secret")
+        <*> strOption (long "faktory_host")
+        <*> option auto (long "faktory_port")
+        <*> optional (strOption $ long "faktory_password")
 
 main :: IO ()
 main = do

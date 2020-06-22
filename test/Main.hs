@@ -32,6 +32,9 @@ opts =
         <*> strOption (long "client_id")
         <*> strOption (long "client_secret")
 
+-- TODO: add automated integration tests, where authenticated is passed in with
+-- flags.
+
 main :: IO ()
 main = do
   args <- getArgs

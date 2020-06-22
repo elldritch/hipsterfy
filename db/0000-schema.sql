@@ -39,6 +39,4 @@ CREATE TABLE spotify_artist_listeners (
   spotify_artist_id INT NOT NULL REFERENCES spotify_artist(id),
   timestamp         DATE NOT NULL,
   monthly_listeners INT NOT NULL
-
-  -- TODO: we can segment this per-city as well. Does the sum of all cities equal total listeners?
 );

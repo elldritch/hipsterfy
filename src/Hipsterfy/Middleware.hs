@@ -5,3 +5,4 @@ module Hipsterfy.Middleware () where
 -- Application-level logging:
 -- - Authenticated user
 -- - Request ID?
+-- - thread-safe
