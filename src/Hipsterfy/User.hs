@@ -6,16 +6,18 @@ module Hipsterfy.User
     getUserBySpotifyID,
     getUserByFriendCode,
     getCredentials,
-    setUserFollowUpdating,
+    startUserFollowUpdate,
+    completeUserFollowUpdate,
     getFollowedArtists,
+    setFollowedArtists,
   )
 where
 
 import Control.Monad.Except (liftEither, throwError)
-import Data.Time (UTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Only (Only), Query, ToRow, execute, query)
 import Hipsterfy.Spotify
-  ( SpotifyArtist,
+  ( SpotifyArtist (..),
     SpotifyUser (..),
     getSpotifyUser,
   )
@@ -29,6 +31,7 @@ import Hipsterfy.Spotify.Auth
   )
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
+import Relude.Unsafe (fromJust)
 
 data User = User
   { userID :: Int,
@@ -176,10 +179,72 @@ getCredentials app conn User {userID, spotifyCredentials} = do
             userID
           )
 
-setUserFollowUpdating :: (MonadIO m) => Connection -> User -> UTCTime -> Int -> m ()
-setUserFollowUpdating conn user started total = undefined
+-- TODO: Ideally, this would take place in some MonadDatabase, and its caller
+-- would be in some MonadClock.
+startUserFollowUpdate :: (MonadIO m) => Connection -> User -> UTCTime -> Int -> m ()
+startUserFollowUpdate conn User {userID} started total = do
+  void $ liftIO $
+    execute
+      conn
+      "UPDATE hipsterfy_user SET\
+      \ follows_currently_updating = true,\
+      \ follows_last_update_start = ?,\
+      \ follows_current_update_total = ?\
+      \ WHERE id = ?"
+      (started, total, userID)
+
+completeUserFollowUpdate :: (MonadIO m) => Connection -> User -> m ()
+completeUserFollowUpdate conn User {userID} = do
+  void $ liftIO $
+    execute
+      conn
+      "UPDATE hipsterfy_user SET follows_currently_updating = false WHERE id = ?"
+      (Only userID)
 
 data UpdateStatus = UpdatedAt UTCTime | InProgress Int Int
 
+followUpdateTimeout :: NominalDiffTime
+followUpdateTimeout = 60 * 10
+
 getFollowedArtists :: (MonadIO m) => Connection -> User -> m (UpdateStatus, [SpotifyArtist])
-getFollowedArtists conn user = undefined
+getFollowedArtists conn User {userID} = do
+  rows <-
+    liftIO $
+      query
+        conn
+        "SELECT\
+        \ spotify_artist.spotify_artist_id,\
+        \ spotify_artist.spotify_url,\
+        \ spotify_artist.name\
+        \ FROM hipsterfy_user\
+        \ JOIN hipsterfy_user_spotify_artist_follow ON hipsterfy_user_spotify_artist_follow.user_id = hipsterfy_user.id \
+        \ JOIN spotify_artist ON spotify_artist.id = hipsterfy_user_spotify_artist_follow.spotify_artist_id\
+        \ WHERE hipsterfy_user.id = ?"
+        (Only userID)
+  let artists = map (\(spotifyArtistID, spotifyURL, name) -> SpotifyArtist {spotifyArtistID, spotifyURL, name}) rows
+
+  row <-
+    liftIO $
+      query
+        conn
+        "SELECT\
+        \ follows_currently_updating,\
+        \ follows_last_update_start,\
+        \ follows_current_update_total\
+        \ FROM hipsterfy_user WHERE hipsterfy_user.id = ?"
+        (Only userID)
+  status <- case row of
+    [(currentlyUpdating, lastUpdateStart, currentUpdateTotal)] -> do
+      now <- liftIO getCurrentTime
+      return $
+        if currentlyUpdating && diffUTCTime now lastUpdateStart < followUpdateTimeout
+          then InProgress (length artists) $ fromJust currentUpdateTotal
+          else UpdatedAt lastUpdateStart
+    [] -> error $ "could not find user with ID " <> show userID
+    _ -> error "getFollowedArtists: impossible: selected multiple users with same ID"
+
+  return (status, artists)
+
+setFollowedArtists :: (MonadIO m) => Connection -> User -> [SpotifyArtist] -> m ()
+setFollowedArtists conn user artists = do
+  undefined

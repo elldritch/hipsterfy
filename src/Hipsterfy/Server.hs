@@ -137,13 +137,13 @@ server spotifyApp conn = do
       creds <- liftIO $ getCredentials spotifyApp conn' user
       a <- liftIO getCurrentTime
       putStrLn $ "a: " ++ show a
-      followedArtists <- getFollowedSpotifyArtists creds
+      followedArtists <- snd <$> getFollowedSpotifyArtists creds
       b <- liftIO getCurrentTime
       putStrLn $ "b: " ++ show b
-      trackArtists <- getSpotifyArtistsOfSavedTracks creds
+      trackArtists <- snd <$> getSpotifyArtistsOfSavedTracks creds
       c <- liftIO getCurrentTime
       putStrLn $ "c: " ++ show c
-      albumArtists <- getSpotifyArtistsOfSavedAlbums creds
+      albumArtists <- snd <$> getSpotifyArtistsOfSavedAlbums creds
       d <- liftIO getCurrentTime
       putStrLn $ "d: " ++ show d
       let artists = ordNub $ trackArtists ++ albumArtists ++ followedArtists

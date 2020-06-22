@@ -67,9 +67,9 @@ data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
 
 instance FromJSON SpotifyFollowedArtistsResponse
 
-getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
+getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m (Int, [SpotifyArtist])
 getFollowedSpotifyArtists creds =
-  fmap snd $ requestSpotifyAPIPages' creds artists $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
+  requestSpotifyAPIPages' creds artists $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
 
 {- HLINT ignore SpotifyTrack "Use newtype instead of data" -}
 data SpotifyTrack = SpotifyTrack
@@ -82,10 +82,10 @@ instance FromJSON SpotifyTrack where
     spotifyTrackArtists <- withObject "track" (\t -> (t .: "artists") >>= parseJSON) track
     return SpotifyTrack {spotifyTrackArtists}
 
-getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
+getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m (Int, [SpotifyArtist])
 getSpotifyArtistsOfSavedTracks creds = do
-  tracks <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/tracks?limit=50"
-  return $ ordNub $ concatMap spotifyTrackArtists $ snd tracks
+  (total, tracks) <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/tracks?limit=50"
+  return (total, ordNub $ concatMap spotifyTrackArtists tracks)
 
 {- HLINT ignore SpotifyAlbum "Use newtype instead of data" -}
 data SpotifyAlbum = SpotifyAlbum
@@ -98,10 +98,10 @@ instance FromJSON SpotifyAlbum where
     spotifyAlbumArtists <- withObject "album" (\t -> (t .: "artists") >>= parseJSON) album
     return SpotifyAlbum {spotifyAlbumArtists}
 
-getSpotifyArtistsOfSavedAlbums :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
+getSpotifyArtistsOfSavedAlbums :: (MonadIO m) => SpotifyCredentials -> m (Int, [SpotifyArtist])
 getSpotifyArtistsOfSavedAlbums creds = do
-  albums <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/albums?limit=50"
-  return $ ordNub $ concatMap spotifyAlbumArtists $ snd albums
+  (total, albums) <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/albums?limit=50"
+  return (total, ordNub $ concatMap spotifyAlbumArtists albums)
 
 {- HLINT ignore SpotifyArtistInsights "Use newtype instead of data" -}
 data SpotifyArtistInsights = SpotifyArtistInsights

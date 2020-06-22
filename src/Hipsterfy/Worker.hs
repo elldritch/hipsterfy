@@ -4,8 +4,9 @@ import Control.Concurrent.Async (async, waitBoth)
 import Database.PostgreSQL.Simple (connectPostgreSQL)
 import Faktory.Settings (ConnectionInfo (..), Queue (..), Settings (..), defaultSettings)
 import qualified Faktory.Worker as W (runWorker)
-import Hipsterfy.Spotify.Auth (SpotifyApp (..))
+import Hipsterfy.Jobs.UpdateArtist (handleUpdateArtist)
 import Hipsterfy.Jobs.UpdateUser (handleUpdateUser)
+import Hipsterfy.Spotify.Auth (SpotifyApp (..))
 import Relude
 
 data Options = Options
@@ -27,12 +28,11 @@ runWorker Options {pgConn, faktoryHost, faktoryPort, faktoryPassword, clientID, 
   updateUserWorker <-
     async
       $ W.runWorker (settingsForQ "update-user")
-      $ handleUpdateUser app conn
+      $ handleUpdateUser conn
   updateArtistWorker <-
     async
       $ W.runWorker (settingsForQ "update-artist")
-      $ \job -> do
-        putStrLn job
+      $ handleUpdateArtist conn
   _ <- waitBoth updateUserWorker updateArtistWorker
   pass
   where
