@@ -28,7 +28,6 @@ instance FromJSON UpdateArtistJob
 
 instance ToJSON UpdateArtistJob
 
--- TODO: make a check here to ensure the artist needs updating?
 enqueueUpdateArtist :: (MonadIO m) => Client -> Connection -> SpotifyArtist -> m ()
 enqueueUpdateArtist client conn SpotifyArtist {spotifyArtistID} = do
   updateNeeded <- needsUpdate conn spotifyArtistID
