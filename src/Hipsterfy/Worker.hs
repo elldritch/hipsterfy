@@ -1,6 +1,7 @@
 module Hipsterfy.Worker (Options (..), runWorker) where
 
-import Control.Concurrent.Async (async, waitBoth)
+import Control.Concurrent (getNumCapabilities)
+import Control.Concurrent.Async (async, wait)
 import Database.PostgreSQL.Simple (connectPostgreSQL)
 import Faktory.Client (newClient)
 import Faktory.Settings (ConnectionInfo (..), Settings (..), defaultSettings)
@@ -26,18 +27,20 @@ runWorker Options {pgConn, faktoryHost, faktoryPort, faktoryPassword, clientID, 
   updateArtistClient <- newClient (settingsForQ updateArtistQueue) Nothing
   let app = SpotifyApp {clientID, clientSecret, redirectURI = error "runWorker: impossible: redirectURI never used"}
 
-  putStrLn "Starting workers."
-  -- TODO: run multiple worker threads per process.
+  caps <- getNumCapabilities
+  putStrLn $ "Starting workers (" <> show caps <> " threads)."
   updateUserWorker <-
     async
       $ W.runWorker (settingsForQ updateUserQueue)
       $ handleUpdateUser app updateArtistClient conn
-  updateArtistWorker <-
-    async
-      $ W.runWorker (settingsForQ updateArtistQueue)
-      $ handleUpdateArtist conn
-  _ <- waitBoth updateUserWorker updateArtistWorker
-  pass
+  updateArtistWorkers <-
+    mapM
+      ( const $ async
+          $ W.runWorker (settingsForQ updateArtistQueue)
+          $ handleUpdateArtist conn
+      )
+      [1 .. caps - 1]
+  mapM_ wait $ updateUserWorker : updateArtistWorkers
   where
     settingsForQ queue =
       defaultSettings
