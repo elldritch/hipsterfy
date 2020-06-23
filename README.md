@@ -110,9 +110,16 @@ cabal run hipsterfy-worker -- \
 
 ### Running with `docker-compose`
 
-Docker Compose will start all containers for you.
+Docker Compose will start all containers for you. Make sure to set environment variables for configuration.
 
 ```bash
+export HIPSTERFY_ADDR_HOST=http://localhost
+export HIPSTERFY_ADDR_PORT=8000
+export HIPSTERFY_SPOTIFY_CLIENT_ID=XXXX
+export HIPSTERFY_SPOTIFY_CLIENT_SECRET=XXXX
+export HIPSTERFY_DB_USER=hipsterfy
+export HIPSTERFY_DB_PASSWORD=hunter2
+export HIPSTERFY_JOBQUEUE_PASSWORD=hunter2
 sudo docker-compose -p hipsterfy-dev up --build
 ```
 

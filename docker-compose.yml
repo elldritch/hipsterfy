@@ -5,17 +5,39 @@ services:
     build:
       dockerfile: ./images/hipsterfy/Dockerfile
       context: .
+    entrypoint: "/usr/local/bin/hipsterfy"
     command: [
       "--host=${HIPSTERFY_ADDR_HOST}",
       "--port=${HIPSTERFY_ADDR_PORT}",
-      "--db=postgresql://${HIPSTERFY_DB_USER}:${HIPSTERFY_DB_PASSWORD}@db:5432/${HIPSTERFY_DB_USER}",
       "--client_id=${HIPSTERFY_SPOTIFY_CLIENT_ID}",
-      "--client_secret=${HIPSTERFY_SPOTIFY_CLIENT_SECRET}"
+      "--client_secret=${HIPSTERFY_SPOTIFY_CLIENT_SECRET}",
+      "--db=postgresql://${HIPSTERFY_DB_USER}:${HIPSTERFY_DB_PASSWORD}@db:5432/${HIPSTERFY_DB_USER}",
+      "--faktory_host=jobqueue",
+      "--faktory_port=7419",
+      "--faktory_password=${HIPSTERFY_JOBQUEUE_PASSWORD}"
     ]
     ports:
       - "${HIPSTERFY_ADDR_PORT}:${HIPSTERFY_ADDR_PORT}"
     depends_on:
       - db
+      - jobqueue
+
+  worker:
+    build:
+      dockerfile: ./images/hipsterfy/Dockerfile
+      context: .
+    entrypoint: "/usr/local/bin/hipsterfy-worker"
+    command: [
+      "--client_id=${HIPSTERFY_SPOTIFY_CLIENT_ID}",
+      "--client_secret=${HIPSTERFY_SPOTIFY_CLIENT_SECRET}",
+      "--db=postgresql://${HIPSTERFY_DB_USER}:${HIPSTERFY_DB_PASSWORD}@db:5432/${HIPSTERFY_DB_USER}",
+      "--faktory_host=jobqueue",
+      "--faktory_port=7419",
+      "--faktory_password=${HIPSTERFY_JOBQUEUE_PASSWORD}"
+    ]
+    depends_on:
+      - db
+      - jobqueue
 
   db:
     build:
@@ -31,6 +53,12 @@ services:
 
   jobqueue:
     image: contribsys/faktory:1.4.0
+    entrypoint: "/faktory"
+    command: [
+      "-b", ":7419",
+      "-w", ":7420",
+      "-e", "production"
+    ]
     environment:
       FAKTORY_PASSWORD: ${HIPSTERFY_JOBQUEUE_PASSWORD}
     ports:

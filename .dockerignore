@@ -20,3 +20,8 @@ hie.yaml
 
 # Documentation.
 README.md
+docs/
+
+# Docker recipes.
+images/
+docker-compose.yml
