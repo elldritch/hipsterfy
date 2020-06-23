@@ -6,13 +6,14 @@ module Hipsterfy.User
     getUserByID,
     getUserBySpotifyID,
     getUserByFriendCode,
-    getCredentials,
-    UpdateStatus (..),
+    refreshCredentialsIfNeeded,
+    getFollowedArtists,
+    FollowUpdateStatus (..),
+    userFollowUpdateInProgress,
+    userFollowUpdateInProgress',
+    needsUpdate,
     startUserFollowUpdate,
     completeUserFollowUpdate,
-    isUpdatingFollowers,
-    isUpdatingFollowers',
-    getFollowedArtists,
     setFollowedArtists,
   )
 where
@@ -20,10 +21,10 @@ where
 import Control.Monad.Except (liftEither, throwError)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
-import Database.PostgreSQL.Simple (Connection, Only (Only), Query, ToRow, execute, query, withTransaction)
+import Database.PostgreSQL.Simple (fromOnly, Connection, Only (Only), Query, ToRow, execute, query, withTransaction)
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
-import Hipsterfy.Artist (Artist (..), insertArtistIfNotExists)
+import Hipsterfy.Artist (getArtistBySpotifyArtistID, Artist (..), createArtistIfNotExists)
 import Hipsterfy.Spotify
   ( SpotifyArtist (..),
     SpotifyUser (..),
@@ -85,7 +86,8 @@ createUser app conn authCode oauthState =
         userRows <- liftIO $ insertUser friendCode spotifyUser spotifyCredentials
         case userRows of
           [Only userID] -> return $ User {userID, friendCode, spotifyUserID, spotifyUserName, spotifyCredentials}
-          _ -> error "impossible: insert of single User returned zero or more than 1 row"
+          [] -> error "createUser: impossible: insert of single User returned 0 rows"
+          _ -> error "createUser: impossible: insert of single User returned more than 1 row"
   where
     insertUser :: Text -> SpotifyUser -> SpotifyCredentials -> IO [Only UserID]
     insertUser friendCode SpotifyUser {spotifyUserID, spotifyUserName} SpotifyCredentials {accessToken, expiration, refreshToken} = do
@@ -167,8 +169,8 @@ getUser conn sql params = do
 
 -- Operations.
 
-getCredentials :: (MonadIO m) => SpotifyApp -> Connection -> User -> m SpotifyCredentials
-getCredentials app conn User {userID, spotifyCredentials} = do
+refreshCredentialsIfNeeded :: (MonadIO m) => SpotifyApp -> Connection -> User -> m SpotifyCredentials
+refreshCredentialsIfNeeded app conn User {userID, spotifyCredentials} = do
   now <- liftIO getCurrentTime
   if now > expiration spotifyCredentials
     then do
@@ -191,8 +193,101 @@ getCredentials app conn User {userID, spotifyCredentials} = do
             userID
           )
 
--- TODO: Ideally, this would take place in some MonadDatabase, and its caller
--- would be in some MonadClock.
+getFollowedArtists :: (MonadIO m) => Connection -> User -> m (FollowUpdateStatus, [Artist])
+getFollowedArtists conn User {userID} = do
+  follows <-
+    liftIO $
+      query
+        conn
+        "SELECT\
+        \ spotify_artist.spotify_artist_id\
+        \ FROM hipsterfy_user\
+        \ JOIN hipsterfy_user_spotify_artist_follow ON hipsterfy_user_spotify_artist_follow.user_id = hipsterfy_user.id \
+        \ JOIN spotify_artist ON spotify_artist.id = hipsterfy_user_spotify_artist_follow.spotify_artist_id\
+        \ WHERE hipsterfy_user.id = ?"
+        (Only userID)
+  artists <- mapM (getArtistBySpotifyArtistID conn . fromOnly) follows
+  user <-
+    liftIO $
+      query
+        conn
+        "SELECT\
+        \ follows_currently_updating,\
+        \ follows_last_update_start,\
+        \ follows_current_update_total\
+        \ FROM hipsterfy_user WHERE hipsterfy_user.id = ?"
+        (Only userID)
+  status <- case user of
+    [(currentlyUpdating, lastUpdateStart, currentUpdateTotal)] -> do
+      now <- liftIO getCurrentTime
+      return $
+        if updateNotTimedOut currentlyUpdating lastUpdateStart now
+          then InProgress (length artists) $ fromJust currentUpdateTotal
+          else UpdatedAt lastUpdateStart
+    [] -> error $ "getFollowedArtists: could not find user with ID " <> show userID
+    _ -> error $ "getFollowedArtists: impossible: selected multiple users with ID " <> show userID
+
+  return (status, artists)
+
+-- Determining follow update status.
+
+data FollowUpdateStatus = UpdatedAt UTCTime | InProgress Int Int
+
+followUpdateTimeout :: NominalDiffTime
+followUpdateTimeout = 60 * 10
+
+userFollowUpdateInProgress :: (MonadIO m) => Connection -> User -> m Bool
+userFollowUpdateInProgress conn User {userID} = userFollowUpdateInProgress' conn userID
+
+userFollowUpdateInProgress' :: (MonadIO m) => Connection -> UserID -> m Bool
+userFollowUpdateInProgress' conn userID = do
+  status <- getUpdateStatus conn userID
+  return $ case status of
+    InProgress' -> True
+    _ -> False
+
+needsUpdateInterval :: NominalDiffTime
+needsUpdateInterval = 60 * 60 * 24
+
+needsUpdate :: (MonadIO m) => Connection -> User -> m Bool
+needsUpdate conn User {userID} = do
+  now <- liftIO getCurrentTime
+  status <- getUpdateStatus conn userID
+  return $ case status of
+    UpdatedAt' t -> diffUTCTime now t > needsUpdateInterval
+    InProgress' -> False
+
+-- Determining follow update status: helpers.
+
+updateNotTimedOut :: Bool -> UTCTime -> UTCTime -> Bool
+updateNotTimedOut currentlyUpdating lastUpdateStart now =
+  currentlyUpdating && diffUTCTime now lastUpdateStart < followUpdateTimeout
+
+data FollowUpdateStatus' = UpdatedAt' UTCTime | InProgress'
+
+getUpdateStatus :: (MonadIO m) => Connection -> UserID -> m FollowUpdateStatus'
+getUpdateStatus conn userID = do
+  row <-
+    liftIO $
+      query
+        conn
+        "SELECT\
+        \ follows_currently_updating,\
+        \ follows_last_update_start\
+        \ FROM hipsterfy_user WHERE hipsterfy_user.id = ?"
+        (Only userID)
+  case row of
+    [(currentlyUpdating, lastUpdateStart)] -> do
+      now <- liftIO getCurrentTime
+      return $
+        if updateNotTimedOut currentlyUpdating lastUpdateStart now
+          then InProgress'
+          else UpdatedAt' lastUpdateStart
+    [] -> error $ "getUpdateStatus: could not find user with ID " <> show userID
+    _ -> error $ "getUpdateStatus: impossible: selected multiple users with ID " <> show userID
+
+-- Updating followed artists.
+
 startUserFollowUpdate :: (MonadIO m) => Connection -> User -> UTCTime -> Int -> m ()
 startUserFollowUpdate conn User {userID} started total = do
   void $ liftIO $
@@ -213,75 +308,6 @@ completeUserFollowUpdate conn User {userID} = do
       "UPDATE hipsterfy_user SET follows_currently_updating = false WHERE id = ?"
       (Only userID)
 
-data UpdateStatus = UpdatedAt UTCTime | InProgress Int Int
-
-followUpdateTimeout :: NominalDiffTime
-followUpdateTimeout = 60 * 10
-
-updateInProgress :: Bool -> UTCTime -> UTCTime -> Bool
-updateInProgress currentlyUpdating lastUpdateStart now =
-  currentlyUpdating && diffUTCTime now lastUpdateStart < followUpdateTimeout
-
-isUpdatingFollowers :: (MonadIO m) => Connection -> User -> m Bool
-isUpdatingFollowers conn User {userID} = isUpdatingFollowers' conn userID
-
-isUpdatingFollowers' :: (MonadIO m) => Connection -> UserID -> m Bool
-isUpdatingFollowers' conn userID = do
-  row <-
-    liftIO $
-      query
-        conn
-        "SELECT\
-        \ follows_currently_updating,\
-        \ follows_last_update_start\
-        \ FROM hipsterfy_user WHERE hipsterfy_user.id = ?"
-        (Only userID)
-  case row of
-    [(currentlyUpdating, lastUpdateStart)] -> do
-      now <- liftIO getCurrentTime
-      return $ updateInProgress currentlyUpdating lastUpdateStart now
-    [] -> error $ "could not find user with ID " <> show userID
-    _ -> error "getFollowedArtists: impossible: selected multiple users with same ID"
-
-getFollowedArtists :: (MonadIO m) => Connection -> User -> m (UpdateStatus, [SpotifyArtist])
-getFollowedArtists conn User {userID} = do
-  rows <-
-    liftIO $
-      query
-        conn
-        "SELECT\
-        \ spotify_artist.spotify_artist_id,\
-        \ spotify_artist.spotify_url,\
-        \ spotify_artist.name\
-        \ FROM hipsterfy_user\
-        \ JOIN hipsterfy_user_spotify_artist_follow ON hipsterfy_user_spotify_artist_follow.user_id = hipsterfy_user.id \
-        \ JOIN spotify_artist ON spotify_artist.id = hipsterfy_user_spotify_artist_follow.spotify_artist_id\
-        \ WHERE hipsterfy_user.id = ?"
-        (Only userID)
-  let artists = map (\(spotifyArtistID, spotifyURL, name) -> SpotifyArtist {spotifyArtistID, spotifyURL, name}) rows
-
-  row <-
-    liftIO $
-      query
-        conn
-        "SELECT\
-        \ follows_currently_updating,\
-        \ follows_last_update_start,\
-        \ follows_current_update_total\
-        \ FROM hipsterfy_user WHERE hipsterfy_user.id = ?"
-        (Only userID)
-  status <- case row of
-    [(currentlyUpdating, lastUpdateStart, currentUpdateTotal)] -> do
-      now <- liftIO getCurrentTime
-      return $
-        if updateInProgress currentlyUpdating lastUpdateStart now
-          then InProgress (length artists) $ fromJust currentUpdateTotal
-          else UpdatedAt lastUpdateStart
-    [] -> error $ "could not find user with ID " <> show userID
-    _ -> error "getFollowedArtists: impossible: selected multiple users with same ID"
-
-  return (status, artists)
-
 setFollowedArtists :: (MonadIO m) => Connection -> User -> [SpotifyArtist] -> m ()
 setFollowedArtists conn User {userID} artists = do
   liftIO $ withTransaction conn $ do
@@ -291,7 +317,7 @@ setFollowedArtists conn User {userID} artists = do
     mapM_ setFollowedArtist artists
   where
     setFollowedArtist spotifyArtist = do
-      Artist {artistID} <- insertArtistIfNotExists conn spotifyArtist
+      Artist {artistID} <- createArtistIfNotExists conn spotifyArtist
       void $ liftIO $
         execute
           conn

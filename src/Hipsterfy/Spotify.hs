@@ -15,14 +15,18 @@ where
 import Control.Lens ((.~))
 import Data.Aeson ((.:), (.:?), FromJSON (..), ToJSON, withObject)
 import Database.PostgreSQL.Simple.FromField (FromField)
+import Database.PostgreSQL.Simple.FromRow (FromRow)
 import Database.PostgreSQL.Simple.ToField (ToField)
+import Database.PostgreSQL.Simple.ToRow (ToRow)
 import Hipsterfy.Spotify.API (SpotifyPagedResponse, requestAsJSON, requestSpotifyAPI, requestSpotifyAPIPages, requestSpotifyAPIPages', spotifyAPIURL)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken (..), SpotifyCredentials (..))
 import Network.Wreq (defaults, getWith, header)
 import Relude
 
+-- Spotify users.
+
 newtype SpotifyUserID = SpotifyUserID Text
-  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, Semigroup, ToField, FromField)
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, ToField, FromField)
 
 data SpotifyUser = SpotifyUser
   { spotifyUserID :: SpotifyUserID,
@@ -36,8 +40,10 @@ instance FromJSON SpotifyUser where
 getSpotifyUser :: (MonadIO m) => SpotifyCredentials -> m SpotifyUser
 getSpotifyUser creds = requestSpotifyAPI creds $ spotifyAPIURL <> "/me"
 
+-- Spotify artists.
+
 newtype SpotifyArtistID = SpotifyArtistID Text
-  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, Semigroup, ToField, FromField)
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, ToField, FromField)
 
 data SpotifyArtist = SpotifyArtist
   { spotifyArtistID :: SpotifyArtistID,
@@ -60,14 +66,7 @@ instance FromJSON SpotifyArtist where
     name <- o .: "name"
     return SpotifyArtist {spotifyArtistID, spotifyURL, name}
 
-data SpotifyArtistImage = SpotifyArtistImage
-  { height :: Int,
-    width :: Int,
-    url :: Text
-  }
-  deriving (Show, Generic, Eq)
-
-instance FromJSON SpotifyArtistImage
+-- Loading followed artists.
 
 {- HLINT ignore SpotifyFollowedArtistsResponse "Use newtype instead of data" -}
 data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
@@ -113,6 +112,8 @@ getSpotifyArtistsOfSavedAlbums creds = do
   (total, albums) <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/albums?limit=50"
   return (total, ordNub $ concatMap spotifyAlbumArtists albums)
 
+-- Loading artist monthly listeners.
+
 {- HLINT ignore SpotifyArtistInsights "Use newtype instead of data" -}
 data SpotifyArtistInsights = SpotifyArtistInsights
   { monthlyListeners :: Int
@@ -131,9 +132,9 @@ instance FromJSON SpotifyArtistInsights where
       )
       insights
 
-getSpotifyArtistInsights :: (MonadIO m) => AnonymousBearerToken -> SpotifyArtist -> m SpotifyArtistInsights
-getSpotifyArtistInsights (AnonymousBearerToken bearerToken) SpotifyArtist {spotifyArtistID} =
-  requestAsJSON $
-    getWith
+getSpotifyArtistInsights :: (MonadIO m) => AnonymousBearerToken -> SpotifyArtistID -> m SpotifyArtistInsights
+getSpotifyArtistInsights (AnonymousBearerToken bearerToken) spotifyArtistID =
+  requestAsJSON
+    $ getWith
       (defaults & header "Authorization" .~ ["Bearer " <> encodeUtf8 bearerToken])
-      (toString $ "https://spclient.wg.spotify.com/open-backend-2/v1/artists/" <> spotifyArtistID)
+    $ "https://spclient.wg.spotify.com/open-backend-2/v1/artists/" <> toString spotifyArtistID

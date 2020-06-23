@@ -2,17 +2,19 @@ module Hipsterfy.Pages (loginPage, accountPage, comparePage) where
 
 import Data.List (intersect)
 import Data.List.Split (chunksOf)
-import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), monthlyListeners, name)
-import Hipsterfy.User (UpdateStatus (..), User (..))
-import Relude hiding (Text, div, head)
+import Data.Map (toDescList)
+import Hipsterfy.Artist (Artist (..))
+import Hipsterfy.Spotify (SpotifyArtist (..))
+import Hipsterfy.User (FollowUpdateStatus (..), User (..))
+import Relude hiding (div)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
-import Text.Blaze.Html5 hiding (body, contents)
+import Text.Blaze.Html5 hiding (body, contents, head)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 
 render :: Html -> LText
 render body = renderHtml $ docTypeHtml $ do
-  head $ do
+  H.head $ do
     title "Hipsterfy"
     meta ! A.name "description" ! A.content "See which hipsters you and your friends both follow"
     link ! A.href "https://unpkg.com/tailwindcss@^1.0/dist/tailwind.min.css" ! A.rel "stylesheet"
@@ -40,7 +42,7 @@ loginPage = render $ do
           ! A.href "/authorize"
           $ "Sign in with Spotify"
 
-accountPage :: User -> (UpdateStatus, [(SpotifyArtist, Maybe SpotifyArtistInsights)]) -> LText
+accountPage :: User -> (FollowUpdateStatus, [Artist]) -> LText
 accountPage User {spotifyUserName, friendCode} (status, artists) = container $ do
   p $
     "Logged in as "
@@ -64,8 +66,7 @@ accountPage User {spotifyUserName, friendCode} (status, artists) = container $ d
         ! A.style "background-color: #1DB954;"
         ! A.type_ "submit"
       $ "Enter"
-    p ! A.class_ "mt-2 text-sm text-gray-500 " $ "Comparison may take a bit. Loading artist listener counts is slow."
-    h2 ! A.class_ "text-2xl mt-4 mb-2" $ "Artists you follow"
+    h2 ! A.class_ "text-2xl mt-12 mb-2" $ "Artists you follow"
     case status of
       UpdatedAt lastUpdated -> p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Last updated at " <> show lastUpdated <> "."
       InProgress finished total -> do
@@ -73,15 +74,15 @@ accountPage User {spotifyUserName, friendCode} (status, artists) = container $ d
         p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Refresh for a more recent view."
     artistTable artists
 
-comparePage :: [(SpotifyArtist, SpotifyArtistInsights)] -> [(SpotifyArtist, SpotifyArtistInsights)] -> LText
+comparePage :: [Artist] -> [Artist] -> LText
 comparePage yourFollowedArtists friendFollowedArtists = container $ do
   p "Artists you both follow, in ascending order by listeners:"
   br
-  artistTable $ second Just <$> intersect yourFollowedArtists friendFollowedArtists
+  artistTable $ intersect yourFollowedArtists friendFollowedArtists
   br
   a ! A.class_ "underline text-blue-700" ! A.href "/" $ "Go back"
 
-artistTable :: [(SpotifyArtist, Maybe SpotifyArtistInsights)] -> Html
+artistTable :: [Artist] -> Html
 artistTable artists =
   table ! A.class_ "w-full" $ do
     thead
@@ -91,13 +92,14 @@ artistTable artists =
         th ! A.class_ "font-medium text-right" $ "Monthly listeners"
     tbody $ mconcat $ fmap renderArtist $ sortHipster $ ordNub artists
   where
-    sortHipster :: [(SpotifyArtist, Maybe SpotifyArtistInsights)] -> [(SpotifyArtist, Maybe SpotifyArtistInsights)]
-    sortHipster = sortOn $ monthlyListeners . fromMaybe (SpotifyArtistInsights 0) . snd
-    renderArtist :: (SpotifyArtist, Maybe SpotifyArtistInsights) -> Html
-    renderArtist (SpotifyArtist {spotifyURL, name}, insights) = tr $ do
-      td $ a ! A.class_ "underline text-blue-700" ! A.href (textValue spotifyURL) $ toHtml name
-      td ! A.class_ "text-right" $ toHtml $ case insights of
-        Just SpotifyArtistInsights {monthlyListeners} -> formatInt monthlyListeners
-        Nothing -> "?"
+    sortHipster :: [Artist] -> [Artist]
+    sortHipster = sortOn $ fromMaybe 0 . listeners . monthlyListeners
+    renderArtist :: Artist -> Html
+    renderArtist Artist {spotifyArtist = SpotifyArtist {spotifyURL, name}, monthlyListeners} =
+      tr $ do
+        td $ a ! A.class_ "underline text-blue-700" ! A.href (textValue spotifyURL) $ toHtml name
+        td ! A.class_ "text-right" $ toHtml $ maybe "?" formatInt (listeners monthlyListeners)
     formatInt :: Int -> LText
     formatInt = toLText . reverse . intercalate "," . chunksOf 3 . reverse . show
+    listeners :: Map t Int -> Maybe Int
+    listeners m = fmap snd $ viaNonEmpty head $ toDescList m

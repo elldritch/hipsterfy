@@ -27,6 +27,7 @@ library
     , async              ==2.2.2
     , base64             ==0.4.2
     , blaze-html         ==0.9.1.2
+    , containers         ==0.6.2.1
     , cookie             ==0.4.5
     , faktory            ==1.0.1.2
     , http-types         ==0.12.3
