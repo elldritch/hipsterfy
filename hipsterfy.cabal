@@ -10,6 +10,7 @@ common lang
     NoImplicitPrelude
     DeriveGeneric
     DuplicateRecordFields
+    GeneralizedNewtypeDeriving
     NamedFieldPuns
     OverloadedStrings
     ScopedTypeVariables

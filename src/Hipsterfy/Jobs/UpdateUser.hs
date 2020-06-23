@@ -10,7 +10,7 @@ import Faktory.Settings (Queue (Queue))
 import Hipsterfy.Jobs.UpdateArtist (enqueueUpdateArtist)
 import Hipsterfy.Spotify (getFollowedSpotifyArtists, getSpotifyArtistsOfSavedAlbums, getSpotifyArtistsOfSavedTracks)
 import Hipsterfy.Spotify.Auth (SpotifyApp (..))
-import Hipsterfy.User (User (..), completeUserFollowUpdate, getCredentials, getUserByID, isUpdatingFollowers', setFollowedArtists, startUserFollowUpdate)
+import Hipsterfy.User (User (..), UserID, completeUserFollowUpdate, getCredentials, getUserByID, isUpdatingFollowers', setFollowedArtists, startUserFollowUpdate)
 import Relude
 
 updateUserQueue :: Queue
@@ -18,7 +18,7 @@ updateUserQueue = Queue "update-user"
 
 {- HLINT ignore UpdateUserJob "Use newtype instead of data" -}
 data UpdateUserJob = UpdateUserJob
-  { userID :: Int
+  { userID :: UserID
   }
   deriving (Generic)
 

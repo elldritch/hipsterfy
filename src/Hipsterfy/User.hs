@@ -1,6 +1,7 @@
 module Hipsterfy.User
   ( createOAuthRedirect,
     User (..),
+    UserID (..),
     createUser,
     getUserByID,
     getUserBySpotifyID,
@@ -17,12 +18,16 @@ module Hipsterfy.User
 where
 
 import Control.Monad.Except (liftEither, throwError)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Only (Only), Query, ToRow, execute, query, withTransaction)
+import Database.PostgreSQL.Simple.FromField (FromField)
+import Database.PostgreSQL.Simple.ToField (ToField)
 import Hipsterfy.Artist (Artist (..), insertArtistIfNotExists)
 import Hipsterfy.Spotify
   ( SpotifyArtist (..),
     SpotifyUser (..),
+    SpotifyUserID,
     getSpotifyUser,
   )
 import Hipsterfy.Spotify.Auth
@@ -34,13 +39,16 @@ import Hipsterfy.Spotify.Auth
     requestAccessTokenFromRefreshToken,
   )
 import Relude
-import Test.RandomStrings (randomASCII, randomWord)
 import Relude.Unsafe (fromJust)
+import Test.RandomStrings (randomASCII, randomWord)
+
+newtype UserID = UserID Int
+  deriving (Show, Eq, Ord, FromJSON, ToJSON, ToField, FromField)
 
 data User = User
-  { userID :: Int,
+  { userID :: UserID,
     friendCode :: Text,
-    spotifyUserID :: Text,
+    spotifyUserID :: SpotifyUserID,
     spotifyUserName :: Text,
     spotifyCredentials :: SpotifyCredentials
   }
@@ -79,7 +87,7 @@ createUser app conn authCode oauthState =
           [Only userID] -> return $ User {userID, friendCode, spotifyUserID, spotifyUserName, spotifyCredentials}
           _ -> error "impossible: insert of single User returned zero or more than 1 row"
   where
-    insertUser :: Text -> SpotifyUser -> SpotifyCredentials -> IO [Only Int]
+    insertUser :: Text -> SpotifyUser -> SpotifyCredentials -> IO [Only UserID]
     insertUser friendCode SpotifyUser {spotifyUserID, spotifyUserName} SpotifyCredentials {accessToken, expiration, refreshToken} = do
       now <- getCurrentTime
       query
@@ -99,7 +107,7 @@ createUser app conn authCode oauthState =
 
 -- Retrieval.
 
-getUserByID :: (MonadIO m) => Connection -> Int -> m (Maybe User)
+getUserByID :: (MonadIO m) => Connection -> UserID -> m (Maybe User)
 getUserByID conn userID =
   getUser
     conn
@@ -110,7 +118,7 @@ getUserByID conn userID =
     \ WHERE id = ?"
     (Only userID)
 
-getUserBySpotifyID :: (MonadIO m) => Connection -> Text -> m (Maybe User)
+getUserBySpotifyID :: (MonadIO m) => Connection -> SpotifyUserID -> m (Maybe User)
 getUserBySpotifyID conn spotifyUserID =
   getUser
     conn
@@ -217,7 +225,7 @@ updateInProgress currentlyUpdating lastUpdateStart now =
 isUpdatingFollowers :: (MonadIO m) => Connection -> User -> m Bool
 isUpdatingFollowers conn User {userID} = isUpdatingFollowers' conn userID
 
-isUpdatingFollowers' :: (MonadIO m) => Connection -> Int -> m Bool
+isUpdatingFollowers' :: (MonadIO m) => Connection -> UserID -> m Bool
 isUpdatingFollowers' conn userID = do
   row <-
     liftIO $

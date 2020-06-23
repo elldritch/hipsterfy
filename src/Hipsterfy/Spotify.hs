@@ -1,7 +1,9 @@
 module Hipsterfy.Spotify
   ( SpotifyUser (..),
+    SpotifyUserID (..),
     getSpotifyUser,
     SpotifyArtist (..),
+    SpotifyArtistID (..),
     getFollowedSpotifyArtists,
     getSpotifyArtistsOfSavedTracks,
     getSpotifyArtistsOfSavedAlbums,
@@ -11,14 +13,19 @@ module Hipsterfy.Spotify
 where
 
 import Control.Lens ((.~))
-import Data.Aeson ((.:), (.:?), FromJSON (..), withObject)
+import Data.Aeson ((.:), (.:?), FromJSON (..), ToJSON, withObject)
+import Database.PostgreSQL.Simple.FromField (FromField)
+import Database.PostgreSQL.Simple.ToField (ToField)
 import Hipsterfy.Spotify.API (SpotifyPagedResponse, requestAsJSON, requestSpotifyAPI, requestSpotifyAPIPages, requestSpotifyAPIPages', spotifyAPIURL)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken (..), SpotifyCredentials (..))
 import Network.Wreq (defaults, getWith, header)
 import Relude
 
+newtype SpotifyUserID = SpotifyUserID Text
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, Semigroup, ToField, FromField)
+
 data SpotifyUser = SpotifyUser
-  { spotifyUserID :: Text,
+  { spotifyUserID :: SpotifyUserID,
     spotifyUserName :: Text
   }
 
@@ -29,8 +36,11 @@ instance FromJSON SpotifyUser where
 getSpotifyUser :: (MonadIO m) => SpotifyCredentials -> m SpotifyUser
 getSpotifyUser creds = requestSpotifyAPI creds $ spotifyAPIURL <> "/me"
 
+newtype SpotifyArtistID = SpotifyArtistID Text
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, Semigroup, ToField, FromField)
+
 data SpotifyArtist = SpotifyArtist
-  { spotifyArtistID :: Text,
+  { spotifyArtistID :: SpotifyArtistID,
     spotifyURL :: Text,
     name :: Text
   }

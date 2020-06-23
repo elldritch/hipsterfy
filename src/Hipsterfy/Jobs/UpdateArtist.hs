@@ -5,9 +5,9 @@ import Database.PostgreSQL.Simple (Connection)
 import Faktory.Client (Client)
 import Faktory.Job (JobId, perform, queue)
 import Faktory.Settings (Queue (Queue))
-import Hipsterfy.Spotify (SpotifyArtist (..))
-import Hipsterfy.Spotify.Auth (getAnonymousBearerToken)
 import Hipsterfy.Artist (getArtistInsights')
+import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistID)
+import Hipsterfy.Spotify.Auth (getAnonymousBearerToken)
 import Relude
 
 updateArtistQueue :: Queue
@@ -15,7 +15,7 @@ updateArtistQueue = Queue "update-artist"
 
 {- HLINT ignore UpdateArtistJob "Use newtype instead of data" -}
 data UpdateArtistJob = UpdateArtistJob
-  { spotifyArtistID :: Text
+  { spotifyArtistID :: SpotifyArtistID
   }
   deriving (Generic)
 

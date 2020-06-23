@@ -138,7 +138,7 @@ server spotifyApp updateUserClient conn = do
       Nothing -> throwError $ Redirect "/"
 
     -- Load followed artists.
-    -- TODO: migrate this to the new `getFollowedArtists.
+    -- TODO: migrate this to the new `getFollowedArtists`.
     -- We should basically never do any API calls on-path to a request - we
     -- should always be using cached values, and account for cache
     -- staleness/unavailability.

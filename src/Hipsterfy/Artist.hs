@@ -1,5 +1,6 @@
 module Hipsterfy.Artist
   ( Artist (..),
+    ArtistID (..),
     getArtistInsights,
     getArtistInsights',
     getCachedArtistInsights,
@@ -11,14 +12,26 @@ where
 
 import Data.Time (getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Only (..), execute, query)
-import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), getSpotifyArtistInsights)
+import Database.PostgreSQL.Simple.FromField (FromField)
+import Database.PostgreSQL.Simple.ToField (ToField)
+import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistID, SpotifyArtistInsights (..), getSpotifyArtistInsights)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken)
 import Relude
 
+newtype ArtistID = ArtistID Int
+  deriving (Show, Eq, Ord, ToField, FromField)
+
 data Artist = Artist
-  { artistID :: Int,
+  { artistID :: ArtistID,
     spotifyArtist :: SpotifyArtist
   }
+
+-- TODO: make this way less confusing - which functions update the cache, and which read from it?
+-- loadArtist? updateArtist?
+-- vs. getArtist
+-- Should insights be included as part of `Artist` structure?
+
+-- Break out needsUpdate :: Artist -> Bool as a helper for the workers - avoid enqueuing extra useless jobs
 
 getArtistInsights :: (MonadIO m) => Connection -> AnonymousBearerToken -> SpotifyArtist -> m SpotifyArtistInsights
 getArtistInsights conn bearerToken artist = do
@@ -27,7 +40,8 @@ getArtistInsights conn bearerToken artist = do
     Just insights -> return insights
     Nothing -> refreshArtistInsights conn bearerToken artist
 
-getArtistInsights' :: (MonadIO m) => Connection -> AnonymousBearerToken -> Text -> m SpotifyArtistInsights
+-- TODO: newtypes for certain fields (e.g. IDs)
+getArtistInsights' :: (MonadIO m) => Connection -> AnonymousBearerToken -> SpotifyArtistID -> m SpotifyArtistInsights
 getArtistInsights' conn bearerToken spotifyArtistID = do
   Artist {spotifyArtist} <- getArtistBySpotifyArtistID conn spotifyArtistID
   getArtistInsights conn bearerToken spotifyArtist
@@ -68,11 +82,11 @@ refreshArtistInsights conn bearerToken spotifyArtist = do
       \ (spotify_artist_id, created_at, monthly_listeners)\
       \ VALUES\
       \ (?, ?, ?)"
-      (artistID :: Int, now, monthlyListeners)
+      (artistID, now, monthlyListeners)
 
   return insights
 
-getArtistBySpotifyArtistID :: (MonadIO m) => Connection -> Text -> m Artist
+getArtistBySpotifyArtistID :: (MonadIO m) => Connection -> SpotifyArtistID -> m Artist
 getArtistBySpotifyArtistID conn spotifyArtistID = do
   rows <-
     liftIO $
