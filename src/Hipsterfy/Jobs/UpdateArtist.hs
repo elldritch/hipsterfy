@@ -10,7 +10,7 @@ import Database.PostgreSQL.Simple (Connection)
 import Faktory.Client (Client)
 import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue (Queue))
-import Hipsterfy.Artist (getArtist, UpdateStatus (..), getUpdateStatus, refreshArtistInsights, ArtistID)
+import Hipsterfy.Artist (ArtistID, UpdateStatus (..), getArtist, getUpdateStatus, refreshArtistInsights)
 import Hipsterfy.Spotify.Auth (getAnonymousBearerToken)
 import Relude
 

@@ -13,8 +13,8 @@ import Options.Applicative
     strOption,
   )
 import Relude
-import Test.Hspec (hspec)
 import System.Environment (withArgs)
+import Test.Hspec (hspec)
 
 {- HLINT ignore Options "Use newtype instead of data" -}
 data Options = Options

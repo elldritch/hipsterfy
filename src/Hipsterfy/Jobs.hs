@@ -1,6 +1,6 @@
 module Hipsterfy.Jobs (UpdateStatus (..), getUpdateStatusRaw) where
 
-import Data.Time (diffUTCTime, NominalDiffTime, UTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Database.PostgreSQL.Simple (Connection, Only (..), query)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import Relude

@@ -1,9 +1,9 @@
 module Hipsterfy.Spotify.Spec (testGetAlbums) where
 
-import Hipsterfy.Spotify (getSpotifyArtistsOfSavedTracks, getSpotifyArtistsOfSavedAlbums)
+import Hipsterfy.Spotify (getSpotifyArtistsOfSavedAlbums, getSpotifyArtistsOfSavedTracks)
 import Hipsterfy.Spotify.Auth (SpotifyCredentials (..))
 import Relude
-import Test.Hspec (Spec, shouldSatisfy, describe, it)
+import Test.Hspec (Spec, describe, it, shouldSatisfy)
 
 testGetAlbums :: SpotifyCredentials -> Spec
 testGetAlbums creds = do
