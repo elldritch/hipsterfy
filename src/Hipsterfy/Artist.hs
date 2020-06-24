@@ -6,6 +6,8 @@ module Hipsterfy.Artist
     refreshArtistInsights,
     UpdateStatus (..),
     getUpdateStatus,
+    setUpdateSubmitted,
+    setUpdateCompleted,
   )
 where
 
@@ -15,7 +17,7 @@ import Data.Time (Day, cdDays, diffGregorianDurationClip, getCurrentTime, utctDa
 import Database.PostgreSQL.Simple (Connection, Only (..), execute, query)
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
-import Hipsterfy.Jobs (UpdateStatus (..), getUpdateStatusRaw)
+import Hipsterfy.Jobs (UpdateStatus (..), getUpdateStatusRaw, setUpdateCompletedRaw, setUpdateSubmittedRaw)
 import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), getSpotifyArtistInsights)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken)
 import Relude
@@ -86,10 +88,7 @@ getArtist conn artistID = do
     [] -> Nothing
     _ -> error $ "getArtist: impossible: selected multiple Artists with id " <> show artistID
 
--- Updating monthly listeners.
-
-getUpdateStatus :: (MonadIO m) => Connection -> ArtistID -> m UpdateStatus
-getUpdateStatus conn = getUpdateStatusRaw conn "spotify_artist"
+-- Operations.
 
 refreshArtistInsights :: (MonadIO m) => Connection -> AnonymousBearerToken -> Artist -> m Artist
 refreshArtistInsights conn bearerToken artist@Artist {artistID, spotifyArtist = SpotifyArtist {spotifyArtistID}, monthlyListeners} = do
@@ -119,3 +118,14 @@ refreshArtistInsights conn bearerToken artist@Artist {artistID, spotifyArtist = 
           \ VALUES (?, NOW(), ?)"
           (artistID, newListenerSample)
       return newListenerSample
+
+-- Update status.
+
+getUpdateStatus :: (MonadIO m) => Connection -> ArtistID -> m UpdateStatus
+getUpdateStatus conn = getUpdateStatusRaw conn "spotify_artist"
+
+setUpdateSubmitted :: (MonadIO m) => Connection -> ArtistID -> m ()
+setUpdateSubmitted conn = setUpdateSubmittedRaw conn "spotify_artist"
+
+setUpdateCompleted :: (MonadIO m) => Connection -> ArtistID -> m ()
+setUpdateCompleted conn = setUpdateCompletedRaw conn "spotify_artist"

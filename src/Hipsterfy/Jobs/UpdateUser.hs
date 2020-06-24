@@ -8,7 +8,7 @@ where
 
 import qualified Control.Monad.Parallel as Parallel (mapM_)
 import Data.Aeson (FromJSON, ToJSON)
-import Database.PostgreSQL.Simple (Connection, Only (..), execute)
+import Database.PostgreSQL.Simple (Connection)
 import Faktory.Client (Client)
 import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue (Queue))
@@ -28,6 +28,8 @@ import Hipsterfy.User
     getUserByID,
     refreshCredentialsIfNeeded,
     setFollowedArtists,
+    setUpdateCompleted,
+    setUpdateSubmitted,
   )
 import Relude
 
@@ -53,11 +55,7 @@ enqueueUpdateUser client conn userID = do
 
 forceEnqueueUpdateUser :: (MonadIO m) => Client -> Connection -> UserID -> m ()
 forceEnqueueUpdateUser client conn userID = do
-  void $ liftIO $
-    execute
-      conn
-      "UPDATE hipsterfy_user SET last_update_job_submitted = NOW() WHERE id = ?"
-      (Only userID)
+  setUpdateSubmitted conn userID
   void $ liftIO $ perform (queue updateUserQueue) client UpdateUserJob {userID}
 
 handleUpdateUser :: (MonadIO m) => SpotifyApp -> Client -> Connection -> UpdateUserJob -> m ()
@@ -86,8 +84,4 @@ handleUpdateUser app client conn UpdateUserJob {userID} = do
   liftIO $ Parallel.mapM_ (enqueueUpdateArtist client conn) artistIDs
 
   -- Set the update status.
-  void $ liftIO $
-    execute
-      conn
-      "UPDATE hipsterfy_user SET last_update_job_completed = NOW() WHERE id = ?"
-      (Only userID)
+  setUpdateCompleted conn userID

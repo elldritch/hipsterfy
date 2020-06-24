@@ -1,7 +1,13 @@
-module Hipsterfy.Jobs (UpdateStatus (..), getUpdateStatusRaw) where
+module Hipsterfy.Jobs
+  ( UpdateStatus (..),
+    getUpdateStatusRaw,
+    setUpdateSubmittedRaw,
+    setUpdateCompletedRaw,
+  )
+where
 
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
-import Database.PostgreSQL.Simple (Connection, Only (..), query)
+import Database.PostgreSQL.Simple (Connection, Only (..), Query, execute, query)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import Relude
 
@@ -18,6 +24,9 @@ recentUpdateTimeout = 60 * 60 * 24
 
 -- WARNING: this is super fragile and schema-dependent.
 
+toQuery :: Text -> Query
+toQuery t = fromString $ toString t
+
 getUpdateStatusRaw :: (MonadIO m, ToField i, Show i) => Connection -> Text -> i -> m UpdateStatus
 getUpdateStatusRaw conn table rowID = do
   now <- liftIO getCurrentTime
@@ -25,7 +34,7 @@ getUpdateStatusRaw conn table rowID = do
     liftIO $
       query
         conn
-        ("SELECT last_update_job_submitted, last_update_job_completed FROM " <> fromString (toString table) <> " WHERE id = ?")
+        ("SELECT last_update_job_submitted, last_update_job_completed FROM " <> toQuery table <> " WHERE id = ?")
         (Only rowID)
   return $ case row of
     [(lastJobSubmitted, lastJobCompleted)] ->
@@ -55,3 +64,19 @@ getUpdateStatusRaw conn table rowID = do
       if diffUTCTime now submitted > jobInQueueTimeout
         then NeedsUpdate
         else QueuedAt submitted
+
+setUpdateSubmittedRaw :: (MonadIO m, ToField i) => Connection -> Text -> i -> m ()
+setUpdateSubmittedRaw conn table rowID =
+  void $ liftIO $
+    execute
+      conn
+      ("UPDATE " <> toQuery table <> " SET last_update_job_submitted = NOW() WHERE id = ?")
+      (Only rowID)
+
+setUpdateCompletedRaw :: (MonadIO m, ToField i) => Connection -> Text -> i -> m ()
+setUpdateCompletedRaw conn table rowID =
+  void $ liftIO $
+    execute
+      conn
+      ("UPDATE " <> toQuery table <> " SET last_update_job_completed = NOW() WHERE id = ?")
+      (Only rowID)

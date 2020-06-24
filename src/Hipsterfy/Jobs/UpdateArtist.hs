@@ -10,7 +10,7 @@ import Database.PostgreSQL.Simple (Connection)
 import Faktory.Client (Client)
 import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue (Queue))
-import Hipsterfy.Artist (ArtistID, UpdateStatus (..), getArtist, getUpdateStatus, refreshArtistInsights)
+import Hipsterfy.Artist (ArtistID, UpdateStatus (..), getArtist, getUpdateStatus, refreshArtistInsights, setUpdateCompleted, setUpdateSubmitted)
 import Hipsterfy.Spotify.Auth (getAnonymousBearerToken)
 import Relude
 
@@ -31,7 +31,9 @@ enqueueUpdateArtist :: (MonadIO m) => Client -> Connection -> ArtistID -> m ()
 enqueueUpdateArtist client conn artistID = do
   status <- getUpdateStatus conn artistID
   case status of
-    NeedsUpdate -> void $ liftIO $ perform (queue updateArtistQueue) client UpdateArtistJob {artistID}
+    NeedsUpdate -> do
+      setUpdateSubmitted conn artistID
+      void $ liftIO $ perform (queue updateArtistQueue) client UpdateArtistJob {artistID}
     _ -> pass
 
 handleUpdateArtist :: (MonadIO m) => Connection -> UpdateArtistJob -> m ()
@@ -42,4 +44,4 @@ handleUpdateArtist conn UpdateArtistJob {artistID} = do
     Nothing -> error $ "handleUpdateArtist: could not find artist with ID " <> show artistID
   bearerToken <- getAnonymousBearerToken
   _ <- refreshArtistInsights conn bearerToken artist
-  pass
+  setUpdateCompleted conn artistID

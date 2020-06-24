@@ -11,6 +11,8 @@ module Hipsterfy.User
     setFollowedArtists,
     UpdateStatus (..),
     getUpdateStatus,
+    setUpdateSubmitted,
+    setUpdateCompleted,
   )
 where
 
@@ -21,7 +23,7 @@ import Database.PostgreSQL.Simple (Connection, Only (Only), Query, ToRow, execut
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import Hipsterfy.Artist (Artist (..), ArtistID, getArtist)
-import Hipsterfy.Jobs (UpdateStatus (..), getUpdateStatusRaw)
+import Hipsterfy.Jobs (UpdateStatus (..), getUpdateStatusRaw, setUpdateCompletedRaw, setUpdateSubmittedRaw)
 import Hipsterfy.Spotify
   ( SpotifyUser (..),
     SpotifyUserID,
@@ -212,13 +214,6 @@ getFollowedArtists conn userID = do
           (Only userID)
   return $ catMaybes artists
 
--- Determining follow update status.
-
-getUpdateStatus :: (MonadIO m) => Connection -> UserID -> m UpdateStatus
-getUpdateStatus conn = getUpdateStatusRaw conn "hipsterfy_user"
-
--- Updating followed artists.
-
 setFollowedArtists :: (MonadIO m) => Connection -> UserID -> [ArtistID] -> m ()
 setFollowedArtists conn userID artists =
   liftIO $ withTransaction conn $ do
@@ -235,3 +230,14 @@ setFollowedArtists conn userID artists =
           \ (user_id, spotify_artist_id)\
           \ VALUES (?, ?);"
           (userID, artistID)
+
+-- Update status.
+
+getUpdateStatus :: (MonadIO m) => Connection -> UserID -> m UpdateStatus
+getUpdateStatus conn = getUpdateStatusRaw conn "hipsterfy_user"
+
+setUpdateSubmitted :: (MonadIO m) => Connection -> UserID -> m ()
+setUpdateSubmitted conn = setUpdateSubmittedRaw conn "hipsterfy_user"
+
+setUpdateCompleted :: (MonadIO m) => Connection -> UserID -> m ()
+setUpdateCompleted conn = setUpdateCompletedRaw conn "hipsterfy_user"
