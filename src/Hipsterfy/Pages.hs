@@ -17,30 +17,37 @@ render body = renderHtml $ docTypeHtml $ do
   H.head $ do
     title "Hipsterfy"
     meta ! A.name "description" ! A.content "See which hipsters you and your friends both follow"
+    meta ! A.name "viewport" ! A.content "width=device-width, initial-scale=1.0"
     link ! A.href "https://unpkg.com/tailwindcss@^1.0/dist/tailwind.min.css" ! A.rel "stylesheet"
     link ! A.href "https://cdn.jsdelivr.net/npm/@tailwindcss/ui@latest/dist/tailwind-ui.min.css" ! A.rel "stylesheet"
 
-  H.body body
+  H.body $ do
+    div ! A.class_ "flex py-8 px-4 sm:py-12" $ do
+      div ! A.class_ "mx-auto max-w-lg" $ do
+        body
+    footer ! A.class_ "text-center text-sm pb-12"
+      $ p
+      $ a ! A.class_ "underline text-blue-700"
+        ! A.target "_blank"
+        ! A.href "https://github.com/liftM/hipsterfy"
+      $ "About"
 
 container :: Html -> LText
 container contents = render $ do
-  div ! A.class_ "min-h-screen flex flex-col py-12" $ do
-    div ! A.class_ "mx-auto" $ do
-      h1 ! A.class_ "text-3xl mb-2" $ "Hipsterfy"
-      contents
+  h1 ! A.class_ "text-3xl mb-2" $ "Hipsterfy"
+  contents
 
 loginPage :: LText
 loginPage = render $ do
-  div ! A.class_ "min-h-screen flex flex-col py-12" $ do
-    div ! A.class_ "mx-auto text-center" $ do
-      h1 ! A.class_ "text-3xl mb-2" $ "Hipsterfy"
-      p ! A.class_ "mt-2" $ "Which hipsters do you and your friends both follow?"
-      div ! A.class_ "mt-6" $ do
-        a
-          ! A.class_ "py-2 px-4 text-sm font-medium rounded-md text-white"
-          ! A.style "background-color: #1DB954;"
-          ! A.href "/authorize"
-          $ "Sign in with Spotify"
+  div ! A.class_ "text-center" $ do
+    h1 ! A.class_ "text-3xl mb-2" $ "Hipsterfy"
+    p ! A.class_ "mt-2" $ "Which hipsters do you and your friends both follow?"
+    div ! A.class_ "mt-6" $ do
+      a
+        ! A.class_ "py-2 px-4 text-sm font-medium rounded-md text-white"
+        ! A.style "background-color: #1DB954;"
+        ! A.href "/authorize"
+        $ "Sign in with Spotify"
 
 accountPage :: User -> (FollowUpdateStatus, [Artist]) -> LText
 accountPage User {spotifyUserName, friendCode} (status, artists) = container $ do
@@ -58,7 +65,7 @@ accountPage User {spotifyUserName, friendCode} (status, artists) = container $ d
     label ! A.class_ "block text-sm font-medium text-gray-700" $ "Friend code:"
     div ! A.class_ "mt-1 relative rounded-md shadow-sm" $
       input ! A.class_ "form-input block w-full" ! A.type_ "text" ! A.name "friend-code"
-    p ! A.class_ "mt-2 text-sm text-gray-500" $ "Enter a friend code to see mutually followed hipsters."
+    p ! A.class_ "mt-2 text-sm text-gray-500" $ "Enter a friend code to see mutually followed artists."
     div ! A.class_ "mt-5"
       $ span ! A.class_ "inline-flex rounded-md shadow-sm"
       $ button
@@ -88,8 +95,8 @@ artistTable artists =
     thead
       $ tr
       $ do
-        th ! A.class_ "font-medium text-left" $ "Artist"
-        th ! A.class_ "font-medium text-right" $ "Monthly listeners"
+        th ! A.class_ "font-medium text-left align-top" $ "Artist"
+        th ! A.class_ "font-medium text-right align-top" ! A.style "min-width: 8rem" $ "Monthly listeners"
     tbody $ mconcat $ fmap renderArtist $ sortHipster $ ordNub artists
   where
     sortHipster :: [Artist] -> [Artist]
