@@ -1,2 +1,10 @@
+# Build artifacts.
 dist-newstyle
+
+# Tool configuration.
 .env
+cabal.project.local
+
+# Profiling artifacts.
+*.prof
+*.tix

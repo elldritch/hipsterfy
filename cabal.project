@@ -1,3 +1,10 @@
-with-compiler: ghc-8.8.3
-index-state: 2020-06-03T05:39:39Z
 packages: .
+verbose: 1
+jobs: $ncpus
+index-state: 2020-06-03T05:39:39Z
+with-compiler: ghc-8.8.3
+optimization: 2
+compiler: ghc
+split-sections: True
+executable-stripping: True
+coverage: True
