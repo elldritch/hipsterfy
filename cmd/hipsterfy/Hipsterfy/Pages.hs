@@ -8,7 +8,7 @@ import Hipsterfy.Spotify (SpotifyArtist (..))
 import Hipsterfy.User (UpdateStatus (..), User (..))
 import Relude hiding (div)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
-import Text.Blaze.Html5 hiding (body, contents, head)
+import Text.Blaze.Html5 hiding (body, contents, head, map)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 
@@ -27,9 +27,7 @@ render body = renderHtml $ docTypeHtml $ do
         body
     footer ! A.class_ "text-center text-sm pb-12"
       $ p
-      $ a ! A.class_ "underline text-blue-700"
-        ! A.target "_blank"
-        ! A.href "https://github.com/liftM/hipsterfy"
+      $ href "https://github.com/liftM/hipsterfy" ! A.target "_blank"
       $ "About"
 
 container :: Html -> LText
@@ -55,10 +53,7 @@ accountPage User {spotifyUserName, friendCode, lastUpdated} status artists = con
     "Logged in as "
       <> toHtml spotifyUserName
       <> " "
-      <> ( a ! A.class_ "underline text-blue-700"
-             ! A.href "/logout"
-             $ "(log out)"
-         )
+      <> href "/logout" "(log out)"
   p $ "Your friend code is: " <> code (toHtml friendCode)
   form ! A.action "/compare" ! A.method "POST" $ do
     br
@@ -77,7 +72,12 @@ accountPage User {spotifyUserName, friendCode, lastUpdated} status artists = con
     case status of
       QueuedAt _ -> loading
       _ -> case lastUpdated of
-        Just t -> p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Last updated at " <> show t <> "."
+        Just t ->
+          p ! A.class_ "mb-2 text-sm text-gray-500 " $ do
+            "Last updated at " <> show t <> ". "
+            when (any (null . monthlyListeners) artists) "Some listener counts are still loading."
+            br
+            href "/refresh" "Refresh."
         Nothing -> loading
     artistTable artists
   where
@@ -89,7 +89,7 @@ comparePage yourFollowedArtists friendFollowedArtists = container $ do
   br
   artistTable $ intersect yourFollowedArtists friendFollowedArtists
   br
-  a ! A.class_ "underline text-blue-700" ! A.href "/" $ "Go back"
+  href "/" "Go back"
 
 artistTable :: [Artist] -> Html
 artistTable artists =
@@ -106,9 +106,12 @@ artistTable artists =
     renderArtist :: Artist -> Html
     renderArtist Artist {spotifyArtist = SpotifyArtist {spotifyURL, name}, monthlyListeners} =
       tr $ do
-        td $ a ! A.class_ "underline text-blue-700" ! A.href (textValue spotifyURL) $ toHtml name
+        td $ href spotifyURL $ toHtml name
         td ! A.class_ "text-right" $ toHtml $ maybe "?" formatInt (listeners monthlyListeners)
     formatInt :: Int -> LText
     formatInt = toLText . reverse . intercalate "," . chunksOf 3 . reverse . show
     listeners :: Map t Int -> Maybe Int
     listeners m = fmap snd $ viaNonEmpty head $ toDescList m
+
+href :: Text -> Html -> Html
+href url = a ! A.class_ "underline text-blue-700" ! A.href (textValue url)

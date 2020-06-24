@@ -6,7 +6,7 @@ import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
 import Faktory.Client (Client, newClient)
 import Faktory.Settings (ConnectionInfo (..), Queue, Settings (..))
 import qualified Faktory.Settings as Faktory (defaultSettings)
-import Hipsterfy.Jobs.UpdateUser (enqueueUpdateUser, updateUserQueue)
+import Hipsterfy.Jobs.UpdateUser (forceEnqueueUpdateUser, enqueueUpdateUser, updateUserQueue)
 import Hipsterfy.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify.Auth
@@ -179,6 +179,13 @@ server spotifyApp updateUserClient conn = do
 
     -- Render page.
     html $ comparePage yourArtists friendArtists
+
+  S.get "/refresh" $ do
+    user <- getSession conn
+    _ <- case user of
+      Just User {userID} -> void $ forceEnqueueUpdateUser updateUserClient conn userID
+      _ -> pass
+    redirect "/"
 
   -- Clear logged in cookies.
   S.get "/logout" $ do
