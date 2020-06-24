@@ -94,15 +94,16 @@ needsUpdate conn spotifyArtistID = do
     liftIO $
       query
         conn
-        "SELECT created_at\
+        "SELECT spotify_artist_listeners.created_at\
         \ FROM spotify_artist_listeners\
         \ JOIN spotify_artist ON spotify_artist.id = spotify_artist_listeners.spotify_artist_id\
         \ WHERE spotify_artist.spotify_artist_id = ?\
+        \ ORDER BY spotify_artist_listeners.created_at DESC\
         \ LIMIT 1"
         (Only spotifyArtistID)
   return $ case latest of
     [Only t] -> diffUTCTime now t > needsUpdateInterval
-    [] -> error $ "needsUpdate: could not find artist with spotify ID " <> show spotifyArtistID
+    [] -> True
     _ -> error $ "needsUpdate: impossible: found multiple artists with spotify ID " <> show spotifyArtistID
 
 refreshArtistInsightsIfNeeded :: (MonadIO m) => Connection -> AnonymousBearerToken -> SpotifyArtistID -> m SpotifyArtistInsights

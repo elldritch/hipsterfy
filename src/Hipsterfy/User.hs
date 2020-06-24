@@ -95,8 +95,16 @@ createUser app conn authCode oauthState =
       query
         conn
         "INSERT INTO hipsterfy_user\
-        \ (friend_code, spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token, created_at)\
-        \ VALUES (?, ?, ?, ?, ?, ?, ?)\
+        \ (friend_code,\
+        \  spotify_user_id,\
+        \  spotify_user_name,\
+        \  spotify_access_token,\
+        \  spotify_access_token_expiration,\
+        \  spotify_refresh_token,\
+        \  created_at,\
+        \  follows_currently_updating,\
+        \  follows_last_update_start)\
+        \ VALUES (?, ?, ?, ?, ?, ?, ?, false, NOW() - interval '1 year')\
         \ RETURNING id"
         ( friendCode,
           spotifyUserID,
