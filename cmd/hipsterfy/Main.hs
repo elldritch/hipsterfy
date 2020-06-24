@@ -124,7 +124,6 @@ server spotifyApp updateUserClient conn = do
     user <- getSession conn
     case user of
       Just u@User {userID} -> do
-        -- TODO: why is this so slow?
         void $ enqueueUpdateUser updateUserClient conn userID
         followed <- getFollowedArtists conn userID
         status <- getUpdateStatus conn userID

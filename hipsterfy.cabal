@@ -51,6 +51,7 @@ library
     , monad-parallel  ==0.7.2.3
     , random-strings  ==0.1.1.0
     , time            ==1.9.3
+    , vector          ==0.12.1.2
     , wreq            ==0.5.3.2
 
 common exe-deps

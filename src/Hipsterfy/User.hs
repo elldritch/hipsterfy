@@ -18,14 +18,32 @@ where
 
 import Control.Monad.Except (liftEither, throwError)
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Time (UTCTime, getCurrentTime)
-import Database.PostgreSQL.Simple (Connection, Only (Only), Query, ToRow, execute, fromOnly, query, withTransaction)
+import qualified Data.Map as Map (fromList)
+import Data.Time (UTCTime, getCurrentTime, utctDay)
+import Data.Vector (Vector)
+import qualified Data.Vector as Vector (toList)
+import Database.PostgreSQL.Simple
+  ( Connection,
+    Only (..),
+    Query,
+    ToRow,
+    execute,
+    query,
+    withTransaction,
+  )
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
-import Hipsterfy.Artist (Artist (..), ArtistID, getArtist)
-import Hipsterfy.Jobs (UpdateStatus (..), getUpdateStatusRaw, setUpdateCompletedRaw, setUpdateSubmittedRaw)
+import Hipsterfy.Artist (Artist (..), ArtistID)
+import Hipsterfy.Jobs
+  ( UpdateStatus (..),
+    getUpdateStatusRaw,
+    setUpdateCompletedRaw,
+    setUpdateSubmittedRaw,
+  )
 import Hipsterfy.Spotify
-  ( SpotifyUser (..),
+  ( SpotifyArtist (..),
+    SpotifyArtistID,
+    SpotifyUser (..),
     SpotifyUserID,
     getSpotifyUser,
   )
@@ -202,17 +220,33 @@ getFollowedArtists :: (MonadIO m) => Connection -> UserID -> m [Artist]
 getFollowedArtists conn userID = do
   artists <-
     liftIO $
-      mapM (getArtist conn . fromOnly)
-        =<< query
-          conn
-          "SELECT\
-          \ spotify_artist.id\
-          \ FROM hipsterfy_user\
-          \ JOIN hipsterfy_user_spotify_artist_follow ON hipsterfy_user_spotify_artist_follow.user_id = hipsterfy_user.id \
-          \ JOIN spotify_artist ON spotify_artist.id = hipsterfy_user_spotify_artist_follow.spotify_artist_id\
-          \ WHERE hipsterfy_user.id = ?"
-          (Only userID)
-  return $ catMaybes artists
+      query
+        conn
+        "SELECT\
+        \   spotify_artist.id, spotify_artist.spotify_artist_id, spotify_artist.spotify_url, spotify_artist.name,\
+        \   ARRAY_AGG(spotify_artist_listeners.created_at), ARRAY_AGG(spotify_artist_listeners.monthly_listeners)\
+        \ FROM hipsterfy_user\
+        \ JOIN hipsterfy_user_spotify_artist_follow ON hipsterfy_user_spotify_artist_follow.user_id = hipsterfy_user.id\
+        \ JOIN spotify_artist ON spotify_artist.id = hipsterfy_user_spotify_artist_follow.spotify_artist_id\
+        \ JOIN spotify_artist_listeners ON spotify_artist_listeners.spotify_artist_id = spotify_artist.id\
+        \ WHERE hipsterfy_user.id = ?\
+        \ GROUP BY spotify_artist.id\
+        \ ORDER BY spotify_artist.id ASC;"
+        (Only userID)
+  return $ map toArtist artists
+  where
+    toArtist :: (ArtistID, SpotifyArtistID, Text, Text, Vector UTCTime, Vector Int) -> Artist
+    toArtist (artistID, spotifyArtistID, spotifyURL, name, sampleDates, sampleListeners) =
+      Artist
+        { artistID,
+          spotifyArtist =
+            SpotifyArtist
+              { spotifyArtistID,
+                spotifyURL,
+                name
+              },
+          monthlyListeners = Map.fromList $ zip (utctDay <$> Vector.toList sampleDates) (Vector.toList sampleListeners)
+        }
 
 setFollowedArtists :: (MonadIO m) => Connection -> UserID -> [ArtistID] -> m ()
 setFollowedArtists conn userID artists =
