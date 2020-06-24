@@ -142,10 +142,12 @@ Open this file in your browser to view the documentation.
 
 ### Running tests
 
+Automated tests are not yet implemented.
+
 ```bash
 cabal test --test-show-details=streaming --test-options='foo bar'
 ```
 
 ### Formatting code
 
-For code, use Ormolu. For `hipsterfy.cabal`, use [`cabal-fmt`](https://github.com/phadej/cabal-fmt).
+For code, use [Ormolu](https://github.com/tweag/ormolu). For `hipsterfy.cabal`, use [`cabal-fmt`](https://github.com/phadej/cabal-fmt).
