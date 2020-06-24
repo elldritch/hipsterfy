@@ -5,19 +5,20 @@ import Hipsterfy.Spotify (SpotifyUserID (SpotifyUserID))
 import Hipsterfy.Spotify.Auth (SpotifyApp (..))
 import Hipsterfy.User (User (..), getUserBySpotifyID, refreshCredentialsIfNeeded)
 import Options.Applicative
-  (metavar,  Parser,
+  ( Parser,
     ParserInfo,
-    briefDesc,
     argument,
+    briefDesc,
     command,
-    helper,
     execParser,
+    helper,
     hsubparser,
     info,
     long,
+    metavar,
     progDesc,
-    strOption,
     str,
+    strOption,
   )
 import Relude
 

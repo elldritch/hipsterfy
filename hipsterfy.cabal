@@ -20,31 +20,16 @@ common lang
     -Wincomplete-record-updates -Wmissing-home-modules
     -Wmissing-export-lists -Wredundant-constraints
 
-library
-  import:          lang
   build-depends:
-    , aeson              ==1.5.1.0
-    , async              ==2.2.2
-    , base64             ==0.4.2
-    , blaze-html         ==0.9.1.2
     , containers         ==0.6.2.1
-    , cookie             ==0.4.5
     , faktory            ==1.0.1.2
-    , http-types         ==0.12.3
-    , lens               ==4.19.2
-    , monad-parallel     ==0.7.2.3
     , mtl                ==2.2.2
     , postgresql-simple  ==0.6.2
-    , random-strings     ==0.1.1.0
     , relude             ==0.7.0.0
-    , scotty             ==0.12
-    , scotty-cookie      ==0.1.0.3
-    , split              ==0.2.3.4
-    , text               ==1.2.4.0
-    , time               ==1.9.3
-    , wai-extra          ==3.0.29.2
-    , warp               ==3.3.11
-    , wreq               ==0.5.3.2
+
+library
+  import:          lang
+  hs-source-dirs:  src
 
   -- cabal-fmt: expand src
   exposed-modules:
@@ -52,64 +37,80 @@ library
     Hipsterfy.Jobs
     Hipsterfy.Jobs.UpdateArtist
     Hipsterfy.Jobs.UpdateUser
-    Hipsterfy.Pages
-    Hipsterfy.Server
-    Hipsterfy.Session
     Hipsterfy.Spotify
     Hipsterfy.Spotify.API
     Hipsterfy.Spotify.Auth
     Hipsterfy.Spotify.Internal
     Hipsterfy.User
-    Hipsterfy.Worker
 
-  hs-source-dirs:  src
+  build-depends:
+    , aeson           ==1.5.1.0
+    , base64          ==0.4.2
+    , http-types      ==0.12.3
+    , lens            ==4.19.2
+    , monad-parallel  ==0.7.2.3
+    , random-strings  ==0.1.1.0
+    , time            ==1.9.3
+    , wreq            ==0.5.3.2
+
+common exe-deps
+  build-depends:
+    , hipsterfy
+    , optparse-applicative  ==0.15.1.0
+    , unix                  ==2.7.2.2
 
 test-suite tests
   import:         lang
+  import:         exe-deps
   type:           exitcode-stdio-1.0
   hs-source-dirs: test
   main-is:        Main.hs
 
   -- cabal-fmt: expand test -Main
   other-modules:  Hipsterfy.Spotify.Spec
-  build-depends:
-    , hipsterfy
-    , hspec                 ==2.7.1
-    , optparse-applicative  ==0.15.1.0
-    , relude                ==0.7.0.0
+  build-depends:  hspec ==2.7.1
 
 executable hipsterfy
   import:         lang
-  build-depends:
-    , hipsterfy
-    , optparse-applicative  ==0.15.1.0
-    , relude                ==0.7.0.0
-    , unix                  ==2.7.2.2
-
-  main-is:        Main.hs
-  hs-source-dirs: cmd/hipsterfy
+  import:         exe-deps
   ghc-options:    -threaded -with-rtsopts=-N
+  hs-source-dirs: cmd/hipsterfy
+  main-is:        Main.hs
+
+  -- cabal-fmt: expand cmd/hipsterfy -Main
+  other-modules:
+    Hipsterfy.Pages
+    Hipsterfy.Session
+
+  build-depends:
+    , blaze-html      ==0.9.1.2
+    , cookie          ==0.4.5
+    , random-strings  ==0.1.1.0
+    , scotty          ==0.12
+    , scotty-cookie   ==0.1.0.3
+    , split           ==0.2.3.4
+    , time            ==1.9.3
+    , wai-extra       ==3.0.29.2
+    , warp            ==3.3.11
 
 executable hipsterfy-worker
   import:         lang
-  build-depends:
-    , hipsterfy
-    , optparse-applicative  ==0.15.1.0
-    , relude                ==0.7.0.0
-    , unix                  ==2.7.2.2
-
-  main-is:        Main.hs
-  hs-source-dirs: cmd/hipsterfy-worker
+  import:         exe-deps
   ghc-options:    -threaded -with-rtsopts=-N
+  hs-source-dirs: cmd/hipsterfy-worker
+  main-is:        Main.hs
+
+  -- cabal-fmt: expand cmd/hipsterfy-worker -Main
+  other-modules:
+  build-depends:  async ==2.2.2
 
 executable hipsterfy-tools
   import:         lang
-  build-depends:
-    , hipsterfy
-    , optparse-applicative  ==0.15.1.0
-    , postgresql-simple     ==0.6.2
-    , relude                ==0.7.0.0
-
-  main-is:        Main.hs
-  hs-source-dirs: cmd/hipsterfy-tools
+  import:         exe-deps
   ghc-options:    -threaded -with-rtsopts=-N
+  hs-source-dirs: cmd/hipsterfy-tools
+  main-is:        Main.hs
+
+  -- cabal-fmt: expand cmd/hipsterfy-tools -Main
+  other-modules:
+  build-depends:
