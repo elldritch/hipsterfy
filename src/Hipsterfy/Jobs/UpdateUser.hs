@@ -8,11 +8,11 @@ where
 
 import qualified Control.Monad.Parallel as Parallel (mapM_)
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Time (getCurrentTime)
-import Database.PostgreSQL.Simple (Connection)
+import Database.PostgreSQL.Simple (Connection, Only (..), execute)
 import Faktory.Client (Client)
 import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue (Queue))
+import Hipsterfy.Artist (Artist (..), createArtistIfNotExists)
 import Hipsterfy.Jobs.UpdateArtist (enqueueUpdateArtist)
 import Hipsterfy.Spotify
   ( getFollowedSpotifyArtists,
@@ -21,15 +21,13 @@ import Hipsterfy.Spotify
   )
 import Hipsterfy.Spotify.Auth (SpotifyApp (..))
 import Hipsterfy.User
-  ( User (..),
+  ( UpdateStatus (..),
+    User (..),
     UserID,
-    completeUserFollowUpdate,
+    getUpdateStatus,
     getUserByID,
-    needsUpdate,
     refreshCredentialsIfNeeded,
     setFollowedArtists,
-    startUserFollowUpdate,
-    userFollowUpdateInProgress',
   )
 import Relude
 
@@ -46,46 +44,50 @@ instance FromJSON UpdateUserJob
 
 instance ToJSON UpdateUserJob
 
-enqueueUpdateUser :: (MonadIO m) => Client -> Connection -> User -> m ()
-enqueueUpdateUser client conn user = do
-  updateNeeded <- needsUpdate conn user
-  if updateNeeded then forceEnqueueUpdateUser client user else pass
+enqueueUpdateUser :: (MonadIO m) => Client -> Connection -> UserID -> m ()
+enqueueUpdateUser client conn userID = do
+  status <- getUpdateStatus conn userID
+  case status of
+    NeedsUpdate -> forceEnqueueUpdateUser client conn userID
+    _ -> pass
 
-forceEnqueueUpdateUser :: (MonadIO m) => Client -> User -> m ()
-forceEnqueueUpdateUser client User {userID} =
+forceEnqueueUpdateUser :: (MonadIO m) => Client -> Connection -> UserID -> m ()
+forceEnqueueUpdateUser client conn userID = do
+  void $ liftIO $
+    execute
+      conn
+      "UPDATE hipsterfy_user SET last_update_job_submitted = NOW() WHERE id = ?"
+      (Only userID)
   void $ liftIO $ perform (queue updateUserQueue) client UpdateUserJob {userID}
 
 handleUpdateUser :: (MonadIO m) => SpotifyApp -> Client -> Connection -> UpdateUserJob -> m ()
 handleUpdateUser app client conn UpdateUserJob {userID} = do
-  -- Short circuit: user is already being updated.
-  updating <- userFollowUpdateInProgress' conn userID
-  if updating
-    then pass
-    else do
-      -- Get user.
-      maybeUser <- getUserByID conn userID
-      user <- case maybeUser of
-        Just u -> return u
-        Nothing -> error $ "UpdateUserJob: could not find user with ID " <> show userID
+  -- Get user.
+  maybeUser <- getUserByID conn userID
+  User {spotifyCredentials} <- case maybeUser of
+    Just u -> return u
+    Nothing -> error $ "handleUpdateUser: could not find user with ID " <> show userID
 
-      -- Start update (get totals).
-      -- TODO: verify that laziness actually doesn't evaluate the second tuple
-      -- element yet.
-      creds <- refreshCredentialsIfNeeded app conn user
-      (totalFollowed, followedArtists) <- getFollowedSpotifyArtists creds
-      (totalTrack, trackArtists) <- getSpotifyArtistsOfSavedTracks creds
-      (totalAlbum, albumArtists) <- getSpotifyArtistsOfSavedAlbums creds
+  -- Get artists.
+  creds <- refreshCredentialsIfNeeded app conn userID spotifyCredentials
+  followedArtists <- getFollowedSpotifyArtists creds
+  trackArtists <- getSpotifyArtistsOfSavedTracks creds
+  albumArtists <- getSpotifyArtistsOfSavedAlbums creds
 
-      -- Set user update status.
-      now <- liftIO getCurrentTime
-      startUserFollowUpdate conn user now (totalFollowed + totalTrack + totalAlbum)
+  -- Create artists.
+  let spotifyArtists = ordNub $ followedArtists ++ trackArtists ++ albumArtists
+  artists <- mapM (createArtistIfNotExists conn) spotifyArtists
+  let artistIDs = map artistID artists
 
-      -- Run the update.
-      let artists = ordNub $ followedArtists ++ trackArtists ++ albumArtists
-      setFollowedArtists conn user artists
+  -- Update followed artists.
+  setFollowedArtists conn userID artistIDs
 
-      -- Enqueue any artist updates needed.
-      liftIO $ Parallel.mapM_ (enqueueUpdateArtist client conn) artists
+  -- Enqueue artist updates needed.
+  liftIO $ Parallel.mapM_ (enqueueUpdateArtist client conn) artistIDs
 
-      -- Finish the updating status.
-      completeUserFollowUpdate conn user
+  -- Set the update status.
+  void $ liftIO $
+    execute
+      conn
+      "UPDATE hipsterfy_user SET last_update_job_completed = NOW() WHERE id = ?"
+      (Only userID)

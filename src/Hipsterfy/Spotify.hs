@@ -74,7 +74,7 @@ data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
 
 instance FromJSON SpotifyFollowedArtistsResponse
 
-getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m (Int, [SpotifyArtist])
+getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getFollowedSpotifyArtists creds =
   requestSpotifyAPIPages' creds artists $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
 
@@ -89,10 +89,9 @@ instance FromJSON SpotifyTrack where
     spotifyTrackArtists <- withObject "track" (\t -> (t .: "artists") >>= parseJSON) track
     return SpotifyTrack {spotifyTrackArtists}
 
-getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m (Int, [SpotifyArtist])
-getSpotifyArtistsOfSavedTracks creds = do
-  (total, tracks) <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/tracks?limit=50"
-  return (total, ordNub $ concatMap spotifyTrackArtists tracks)
+getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
+getSpotifyArtistsOfSavedTracks creds =
+  (return . ordNub . concatMap spotifyTrackArtists) =<< requestSpotifyAPIPages creds (spotifyAPIURL <> "/me/tracks?limit=50")
 
 {- HLINT ignore SpotifyAlbum "Use newtype instead of data" -}
 data SpotifyAlbum = SpotifyAlbum
@@ -105,10 +104,9 @@ instance FromJSON SpotifyAlbum where
     spotifyAlbumArtists <- withObject "album" (\t -> (t .: "artists") >>= parseJSON) album
     return SpotifyAlbum {spotifyAlbumArtists}
 
-getSpotifyArtistsOfSavedAlbums :: (MonadIO m) => SpotifyCredentials -> m (Int, [SpotifyArtist])
-getSpotifyArtistsOfSavedAlbums creds = do
-  (total, albums) <- requestSpotifyAPIPages creds $ spotifyAPIURL <> "/me/albums?limit=50"
-  return (total, ordNub $ concatMap spotifyAlbumArtists albums)
+getSpotifyArtistsOfSavedAlbums :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
+getSpotifyArtistsOfSavedAlbums creds =
+  (return . ordNub . concatMap spotifyAlbumArtists) =<< requestSpotifyAPIPages creds (spotifyAPIURL <> "/me/albums?limit=50")
 
 -- Loading artist monthly listeners.
 

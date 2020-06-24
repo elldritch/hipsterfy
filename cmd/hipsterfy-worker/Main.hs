@@ -28,12 +28,12 @@ opts =
   where
     options =
       Options
-        <$> strOption (long "db")
+        <$> strOption (long "client_id")
+        <*> strOption (long "client_secret")
+        <*> strOption (long "db")
         <*> strOption (long "faktory_host")
         <*> option auto (long "faktory_port")
-        <*> optional (strOption $ long "faktory_password")
-        <*> strOption (long "client_id")
-        <*> strOption (long "client_secret")
+        <*> strOption (long "faktory_password")
 
 -- TODO: add health check
 

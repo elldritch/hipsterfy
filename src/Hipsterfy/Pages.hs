@@ -5,7 +5,7 @@ import Data.List.Split (chunksOf)
 import Data.Map (toDescList)
 import Hipsterfy.Artist (Artist (..))
 import Hipsterfy.Spotify (SpotifyArtist (..))
-import Hipsterfy.User (FollowUpdateStatus (..), User (..))
+import Hipsterfy.User (UpdateStatus (..), User (..))
 import Relude hiding (div)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Blaze.Html5 hiding (body, contents, head)
@@ -49,8 +49,8 @@ loginPage = render $ do
         ! A.href "/authorize"
         $ "Sign in with Spotify"
 
-accountPage :: User -> (FollowUpdateStatus, [Artist]) -> LText
-accountPage User {spotifyUserName, friendCode} (status, artists) = container $ do
+accountPage :: User -> UpdateStatus -> [Artist] -> LText
+accountPage User {spotifyUserName, friendCode, lastUpdated} status artists = container $ do
   p $
     "Logged in as "
       <> toHtml spotifyUserName
@@ -75,11 +75,13 @@ accountPage User {spotifyUserName, friendCode} (status, artists) = container $ d
       $ "Enter"
     h2 ! A.class_ "text-2xl mt-12 mb-2" $ "Artists you follow"
     case status of
-      UpdatedAt lastUpdated -> p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Last updated at " <> show lastUpdated <> "."
-      InProgress finished total -> do
-        p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Some artists are still loading (" <> show finished <> " out of ~" <> show total <> " complete)."
-        p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Refresh for a more recent view."
+      QueuedAt _ -> loading
+      _ -> case lastUpdated of
+        Just t -> p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Last updated at " <> show t <> "."
+        Nothing -> loading
     artistTable artists
+  where
+    loading = p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Some artists are still loading. Refresh for a more recent view."
 
 comparePage :: [Artist] -> [Artist] -> LText
 comparePage yourFollowedArtists friendFollowedArtists = container $ do

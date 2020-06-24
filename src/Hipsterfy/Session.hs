@@ -1,6 +1,6 @@
 module Hipsterfy.Session (getSession, startSession, endSession) where
 
-import Data.Time (getCurrentTime, secondsToDiffTime)
+import Data.Time (secondsToDiffTime)
 import Database.PostgreSQL.Simple (Connection, execute, query)
 import Database.PostgreSQL.Simple.Types (Only (Only))
 import Hipsterfy.Spotify.Auth (SpotifyCredentials (..))
@@ -25,17 +25,18 @@ getSession conn = do
           query
             conn
             "SELECT\
-            \ hipsterfy_user.id, friend_code,\
+            \ hipsterfy_user.id, friend_code, last_update_job_completed,\
             \ spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
             \ FROM hipsterfy_user_session JOIN hipsterfy_user ON hipsterfy_user_session.user_id = hipsterfy_user.id\
             \ WHERE hipsterfy_user_session.cookie_secret = ?"
             (Only c)
       return $ case rows of
-        [(userID, friendCode, spotifyUserID, spotifyUserName, accessToken, expiration, refreshToken)] ->
+        [(userID, friendCode, lastUpdated, spotifyUserID, spotifyUserName, accessToken, expiration, refreshToken)] ->
           Just $
             User
               { userID,
                 friendCode,
+                lastUpdated,
                 spotifyUserID,
                 spotifyUserName,
                 spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
@@ -47,17 +48,13 @@ startSession :: (MonadIO m, ScottyError e) => Connection -> User -> ActionT e m 
 startSession conn User {userID} = do
   -- Create a new session in the database.
   cookieSecret <- liftIO $ randomWord randomASCII 20
-  now <- liftIO getCurrentTime
   void $ liftIO $
     execute
       conn
       "INSERT INTO hipsterfy_user_session\
       \ (user_id, cookie_secret, created_at)\
-      \ VALUES (?, ?, ?)"
-      ( userID,
-        cookieSecret,
-        now
-      )
+      \ VALUES (?, ?, NOW())"
+      (userID, cookieSecret)
 
   -- Set session cookies.
   setCookie

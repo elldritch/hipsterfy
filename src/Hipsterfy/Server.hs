@@ -16,7 +16,8 @@ import Hipsterfy.Spotify.Auth
     scopeUserTopRead,
   )
 import Hipsterfy.User
-  ( createOAuthRedirect,
+  (getUpdateStatus,  User (..),
+    createOAuthRedirect,
     createUser,
     getFollowedArtists,
     getUserByFriendCode,
@@ -31,12 +32,12 @@ import Web.Scotty.Internal.Types (ActionError (Redirect))
 data Options = Options
   { host :: Text,
     port :: Int,
-    pgConn :: Text,
     clientID :: Text,
     clientSecret :: Text,
+    pgConn :: Text,
     faktoryHost :: Text,
     faktoryPort :: Int,
-    faktoryPassword :: Maybe Text
+    faktoryPassword :: Text
   }
   deriving (Show)
 
@@ -64,7 +65,7 @@ runServer Options {host, port, pgConn, clientID, clientSecret, faktoryHost, fakt
             ConnectionInfo
               { connectionInfoTls = False,
                 connectionInfoHostName = toString faktoryHost,
-                connectionInfoPassword = toString <$> faktoryPassword,
+                connectionInfoPassword = Just $ toString faktoryPassword,
                 connectionInfoPort = fromInteger $ toInteger faktoryPort
               }
         }
@@ -79,11 +80,12 @@ server spotifyApp updateUserClient conn = do
   S.get "/" $ do
     user <- getSession conn
     case user of
-      Just u -> do
+      Just u@User {userID} -> do
         -- TODO: why is this so slow?
-        void $ enqueueUpdateUser updateUserClient conn u
-        (status, followed) <- getFollowedArtists conn u
-        html $ accountPage u (status, followed)
+        void $ enqueueUpdateUser updateUserClient conn userID
+        followed <- getFollowedArtists conn userID
+        status <- getUpdateStatus conn userID
+        html $ accountPage u status followed
       Nothing -> html loginPage
 
   -- Authorization redirect. Generate a new user's OAuth secret and friend code. Redirect to Spotify.
@@ -130,8 +132,8 @@ server spotifyApp updateUserClient conn = do
       Nothing -> throwError $ Redirect "/"
 
     -- Load followed artists.
-    (_, yourArtists) <- getFollowedArtists conn user
-    (_, friendArtists) <- getFollowedArtists conn friend
+    yourArtists <- getFollowedArtists conn $ userID user
+    friendArtists <- getFollowedArtists conn $ userID friend
 
     -- Render page.
     html $ comparePage yourArtists friendArtists

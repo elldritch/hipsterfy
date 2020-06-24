@@ -12,6 +12,5 @@ requestAsJSON req = do
   case eitherDecode body of
     Right v -> return v
     Left e -> do
-      liftIO $ print res
-      -- liftIO $ print body
+      print res
       error $ "JSONError: " <> toText e

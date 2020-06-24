@@ -38,10 +38,10 @@ instance (FromJSON t) => FromJSON (SpotifyPagedResponse t) where
     total <- o .: "total"
     return SpotifyPagedResponse {items, next, total}
 
-requestSpotifyAPIPages :: (MonadIO m, FromJSON v) => SpotifyCredentials -> String -> m (Int, [v])
+requestSpotifyAPIPages :: (MonadIO m, FromJSON v) => SpotifyCredentials -> String -> m [v]
 requestSpotifyAPIPages creds = requestSpotifyAPIPages' creds id
 
-requestSpotifyAPIPages' :: (MonadIO m, FromJSON t) => SpotifyCredentials -> (t -> SpotifyPagedResponse v) -> String -> m (Int, [v])
+requestSpotifyAPIPages' :: (MonadIO m, FromJSON t) => SpotifyCredentials -> (t -> SpotifyPagedResponse v) -> String -> m [v]
 requestSpotifyAPIPages' creds resToPage url = do
   firstPage <- loadPage url
   let t = total firstPage
@@ -50,6 +50,6 @@ requestSpotifyAPIPages' creds resToPage url = do
   -- TODO: build a DSL for representing Spotify API queries.
   let pageURLs = fmap (\offset -> url <> "&offset=" <> show offset) [50, 100 .. t]
   pages <- liftIO $ Parallel.mapM loadPage pageURLs
-  return (t, concat $ items <$> pages)
+  return $ concat $ items <$> pages
   where
     loadPage u = resToPage <$> requestSpotifyAPI creds u

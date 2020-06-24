@@ -12,12 +12,12 @@ import Hipsterfy.Spotify.Auth (SpotifyApp (..))
 import Relude
 
 data Options = Options
-  { pgConn :: Text,
+  { clientID :: Text,
+    clientSecret :: Text,
+    pgConn :: Text,
     faktoryHost :: Text,
     faktoryPort :: Int,
-    faktoryPassword :: Maybe Text,
-    clientID :: Text,
-    clientSecret :: Text
+    faktoryPassword :: Text
   }
   deriving (Show)
 
@@ -49,7 +49,7 @@ runWorker Options {pgConn, faktoryHost, faktoryPort, faktoryPassword, clientID, 
             ConnectionInfo
               { connectionInfoTls = False,
                 connectionInfoHostName = toString faktoryHost,
-                connectionInfoPassword = toString <$> faktoryPassword,
+                connectionInfoPassword = Just $ toString faktoryPassword,
                 connectionInfoPort = fromInteger $ toInteger faktoryPort
               }
         }

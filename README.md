@@ -123,6 +123,12 @@ export HIPSTERFY_JOBQUEUE_PASSWORD=hunter2
 sudo docker-compose -p hipsterfy-dev up --build
 ```
 
+Docker Compose is useful for fully tearing down and setting up new instances for testing. You can completely tear down a Docker Compose deployment with:
+
+```
+sudo docker-compose -p hipsterfy-dev down --volumes
+```
+
 ### Generating documentation
 
 Run Haddock to generate documentation for both the current project and its dependencies.
@@ -142,10 +148,18 @@ Open this file in your browser to view the documentation.
 
 ### Running tests
 
-Automated tests are not yet implemented.
+Automated integration tests require user access tokens in order to test that they work.
 
 ```bash
-cabal test --test-show-details=streaming --test-options='foo bar'
+cabal test --test-show-details=streaming --test-options='--access_token=XXXX'
+```
+
+#### Retrieving an access token
+
+Run `hipsterfy-tools get-access-token` to retrieve a user access token for testing.
+
+```bash
+cabal run hipsterfy-tools -- get-access-token --db 'postgresql://hipsterfy:hunter2@localhost:5432' --client_id XXXX --client_secret XXXX USER_SPOTIFY_ID
 ```
 
 ### Formatting code

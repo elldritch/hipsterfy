@@ -1,44 +1,44 @@
 module Main (main) where
 
+import Hipsterfy.Spotify.Auth (SpotifyCredentials (..))
+import Hipsterfy.Spotify.Spec (testGetAlbums)
 import Options.Applicative
   ( ParserInfo,
-    auto,
     briefDesc,
     execParser,
     helper,
     info,
     long,
-    option,
     progDesc,
-    short,
     strOption,
   )
 import Relude
-import System.Environment (getArgs)
+import Test.Hspec (hspec)
+import System.Environment (withArgs)
 
-data TestOptions = TestOptions {}
+{- HLINT ignore Options "Use newtype instead of data" -}
+data Options = Options
+  { accessToken :: Text
+  }
 
-opts :: ParserInfo TestOptions
+opts :: ParserInfo Options
 opts =
   info
     (options <**> helper)
-    (briefDesc <> progDesc "Hipsterfy server")
+    (briefDesc <> progDesc "Hipsterfy automated test")
   where
     options =
-      TestOptions
-        <$> strOption (long "host")
-        <*> option auto (long "port" <> short 'p')
-        <*> strOption (long "db")
-        <*> strOption (long "client_id")
-        <*> strOption (long "client_secret")
-
--- TODO: add automated integration tests, where authenticated is passed in with
--- flags.
+      Options
+        <$> strOption (long "access_token")
 
 main :: IO ()
 main = do
-  args <- getArgs
-  putStrLn "args"
-  print args
-  options <- execParser opts
-  putStrLn "not a test (yet)"
+  Options {accessToken} <- execParser opts
+  let creds =
+        SpotifyCredentials
+          { accessToken,
+            refreshToken = error "impossible: refreshToken never used",
+            expiration = error "impossible: expiration never used"
+          }
+  withArgs [] $ hspec $ do
+    testGetAlbums creds
