@@ -22,9 +22,9 @@ import Options.Applicative
     strOption,
   )
 import Relude
-import System.Exit (ExitCode (..))
-import System.IO (BufferMode (..), hSetBuffering)
-import System.Posix (Handler (..))
+import System.Exit (ExitCode (ExitSuccess))
+import System.IO (BufferMode (NoBuffering), hSetBuffering)
+import System.Posix (Handler (Catch))
 import System.Posix.Signals (installHandler, softwareTermination)
 
 data Options = Options
