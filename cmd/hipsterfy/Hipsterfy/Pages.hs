@@ -27,8 +27,7 @@ render body = renderHtml $ docTypeHtml $ do
         body
     footer ! A.class_ "text-center text-sm pb-12"
       $ p
-      $ href "https://github.com/liftM/hipsterfy" ! A.target "_blank"
-      $ "About"
+      $ externalHref "https://github.com/liftM/hipsterfy" "About"
 
 container :: Html -> LText
 container contents = render $ do
@@ -106,7 +105,7 @@ artistTable artists =
     renderArtist :: Artist -> Html
     renderArtist Artist {spotifyArtist = SpotifyArtist {spotifyURL, name}, monthlyListeners} =
       tr $ do
-        td $ href spotifyURL $ toHtml name
+        td $ externalHref spotifyURL $ toHtml name
         td ! A.class_ "text-right" $ toHtml $ maybe "?" formatInt (listeners monthlyListeners)
     formatInt :: Int -> LText
     formatInt = toLText . reverse . intercalate "," . chunksOf 3 . reverse . show
@@ -115,3 +114,6 @@ artistTable artists =
 
 href :: Text -> Html -> Html
 href url = a ! A.class_ "underline text-blue-700" ! A.href (textValue url)
+
+externalHref :: Text -> Html -> Html
+externalHref url = href url ! A.target "_blank"
