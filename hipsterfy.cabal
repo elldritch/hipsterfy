@@ -37,6 +37,7 @@ library
     Hipsterfy.Jobs
     Hipsterfy.Jobs.UpdateArtist
     Hipsterfy.Jobs.UpdateUser
+    Hipsterfy.Session
     Hipsterfy.Spotify
     Hipsterfy.Spotify.API
     Hipsterfy.Spotify.Auth
@@ -51,6 +52,7 @@ library
     , monad-parallel  ==0.7.2.3
     , random-strings  ==0.1.1.0
     , time            ==1.9.3
+    , tracing         ==0.0.5.1
     , vector          ==0.12.1.2
     , wreq            ==0.5.3.2
 
@@ -80,17 +82,25 @@ executable hipsterfy
 
   -- cabal-fmt: expand cmd/hipsterfy -Main
   other-modules:
-    Hipsterfy.Pages
-    Hipsterfy.Session
+    Hipsterfy.Server
+    Hipsterfy.Server.Pages
+    Hipsterfy.Server.Session
+    Hipsterfy.Server.Trace
 
   build-depends:
+    , aeson           ==1.5.1.0
     , blaze-html      ==0.9.1.2
     , cookie          ==0.4.5
+    , http-types      ==0.12.3
+    , monad-control   ==1.0.2.3
     , random-strings  ==0.1.1.0
     , scotty          ==0.12
     , scotty-cookie   ==0.1.0.3
     , split           ==0.2.3.4
     , time            ==1.9.3
+    , tracing         ==0.0.5.1
+    , unliftio        ==0.2.13
+    , wai             ==3.2.2.1
     , wai-extra       ==3.0.29.2
     , warp            ==3.3.11
 

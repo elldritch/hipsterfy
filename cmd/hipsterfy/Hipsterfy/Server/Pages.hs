@@ -1,4 +1,4 @@
-module Hipsterfy.Pages (loginPage, accountPage, comparePage) where
+module Hipsterfy.Server.Pages (loginPage, accountPage, comparePage) where
 
 import Data.List (intersect)
 import Data.List.Split (chunksOf)

@@ -55,8 +55,10 @@ import Hipsterfy.Spotify.Auth
     requestAccessTokenFromAuthorizationCode,
     requestAccessTokenFromRefreshToken,
   )
+import Monitor.Tracing (MonadTrace, childSpan)
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
+import Monitor.Tracing.Zipkin (tag)
 
 newtype UserID = UserID Int
   deriving (Show, Eq, Ord, FromJSON, ToJSON, ToField, FromField)
@@ -216,23 +218,35 @@ refreshCredentialsIfNeeded app conn userID creds = do
             userID
           )
 
-getFollowedArtists :: (MonadIO m) => Connection -> UserID -> m [Artist]
+getFollowedArtists :: (MonadIO m, MonadTrace m) => Connection -> UserID -> m [Artist]
 getFollowedArtists conn userID = do
   artists <-
-    liftIO $
-      query
-        conn
-        "SELECT\
-        \   spotify_artist.id, spotify_artist.spotify_artist_id, spotify_artist.spotify_url, spotify_artist.name,\
-        \   ARRAY_AGG(spotify_artist_listeners.created_at), ARRAY_AGG(spotify_artist_listeners.monthly_listeners)\
-        \ FROM hipsterfy_user\
-        \ JOIN hipsterfy_user_spotify_artist_follow ON hipsterfy_user_spotify_artist_follow.user_id = hipsterfy_user.id\
-        \ JOIN spotify_artist ON spotify_artist.id = hipsterfy_user_spotify_artist_follow.spotify_artist_id\
-        \ JOIN spotify_artist_listeners ON spotify_artist_listeners.spotify_artist_id = spotify_artist.id\
-        \ WHERE hipsterfy_user.id = ?\
-        \ GROUP BY spotify_artist.id\
-        \ ORDER BY spotify_artist.id ASC;"
-        (Only userID)
+    childSpan "QUERY getFollowedArtists" $ do
+      tag "kind" "QUERY"
+      tag "user" $ show userID
+      tag "http.route" ""
+      tag "http.verb" ""
+      tag "http.params.foo" ""
+      tag "http.statusCode" ""
+      tag "error" ""
+      tag "name" "postgresql"
+      tag "service.name" "postgresql"
+      tag "db.query" "getFollowedArtists"
+      tag "db.params.userID" $ show userID
+      liftIO $
+        query
+          conn
+          "SELECT\
+          \   spotify_artist.id, spotify_artist.spotify_artist_id, spotify_artist.spotify_url, spotify_artist.name,\
+          \   ARRAY_AGG(spotify_artist_listeners.created_at), ARRAY_AGG(spotify_artist_listeners.monthly_listeners)\
+          \ FROM hipsterfy_user\
+          \ JOIN hipsterfy_user_spotify_artist_follow ON hipsterfy_user_spotify_artist_follow.user_id = hipsterfy_user.id\
+          \ JOIN spotify_artist ON spotify_artist.id = hipsterfy_user_spotify_artist_follow.spotify_artist_id\
+          \ JOIN spotify_artist_listeners ON spotify_artist_listeners.spotify_artist_id = spotify_artist.id\
+          \ WHERE hipsterfy_user.id = ?\
+          \ GROUP BY spotify_artist.id\
+          \ ORDER BY spotify_artist.id ASC;"
+          (Only userID)
   return $ map toArtist artists
   where
     toArtist :: (ArtistID, SpotifyArtistID, Text, Text, Vector UTCTime, Vector Int) -> Artist

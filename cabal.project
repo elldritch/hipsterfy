@@ -7,3 +7,8 @@ optimization: 2
 compiler: ghc
 split-sections: True
 executable-stripping: True
+
+source-repository-package
+  type: git
+  location: https://github.com/timhabermaas/tracing.git
+  branch: fix-missing-content-type-jaeger

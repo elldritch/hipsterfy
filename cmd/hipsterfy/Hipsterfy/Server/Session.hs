@@ -1,4 +1,4 @@
-module Hipsterfy.Session (getSession, startSession, endSession) where
+module Hipsterfy.Server.Session (getSession, startSession, endSession) where
 
 import Data.Time (secondsToDiffTime)
 import Database.PostgreSQL.Simple (Connection, execute, query)
@@ -10,39 +10,19 @@ import Test.RandomStrings (randomASCII, randomWord)
 import Web.Cookie (SetCookie (..), defaultSetCookie)
 import Web.Scotty.Cookie (deleteCookie, getCookie, setCookie)
 import Web.Scotty.Trans (ActionT, ScottyError)
+import Hipsterfy.Session (getSessionByCookieSecret, createSession, deleteSession)
+import Monitor.Tracing (MonadTrace)
 
 hipsterfyCookieName :: Text
 hipsterfyCookieName = "hipsterfy_user"
 
-getSession :: (MonadIO m, ScottyError e) => Connection -> ActionT e m (Maybe User)
+getSession :: (MonadIO m, MonadTrace m, ScottyError e) => Connection -> ActionT e m (Maybe User)
 getSession conn = do
   cookie <- getCookie hipsterfyCookieName
   case cookie of
     Nothing -> return Nothing
-    Just c -> do
-      rows <-
-        liftIO $
-          query
-            conn
-            "SELECT\
-            \ hipsterfy_user.id, friend_code, last_update_job_completed,\
-            \ spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
-            \ FROM hipsterfy_user_session JOIN hipsterfy_user ON hipsterfy_user_session.user_id = hipsterfy_user.id\
-            \ WHERE hipsterfy_user_session.cookie_secret = ?"
-            (Only c)
-      return $ case rows of
-        [(userID, friendCode, lastUpdated, spotifyUserID, spotifyUserName, accessToken, expiration, refreshToken)] ->
-          Just $
-            User
-              { userID,
-                friendCode,
-                lastUpdated,
-                spotifyUserID,
-                spotifyUserName,
-                spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration}
-              }
-        [] -> Nothing
-        _ -> error "impossible: multiple sessions have the same cookie secret"
+    Just c -> lift $ getSessionByCookieSecret conn c
+        -- tag "user" $ show userID
 
 startSession :: (MonadIO m, ScottyError e) => Connection -> User -> ActionT e m ()
 startSession conn User {userID} = do
