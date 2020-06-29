@@ -22,6 +22,7 @@ handleRoute ::
   ScottyT e m ()
 handleRoute method routePattern action =
   addroute method (fromString $ toString routePattern)
+    -- TODO: can we should trace the entire ScottyT? How else do we pick up e.g. 404s?
     $ rootSpanWith (spanKind "ROUTE") alwaysSampled spanName
     $ do
       req <- request

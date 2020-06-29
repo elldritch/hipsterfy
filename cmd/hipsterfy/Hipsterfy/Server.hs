@@ -5,6 +5,7 @@ module Hipsterfy.Server
     handleLogout,
     handleCompare,
     handleForceRefreshUpdates,
+    handleHealthCheck,
   )
 where
 
@@ -15,22 +16,22 @@ import Hipsterfy.Server.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Server.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify.Auth (scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
 import Hipsterfy.User (User (..), createOAuthRedirect, createUser, getFollowedArtists, getUpdateStatus, getUserByFriendCode)
-import Network.HTTP.Types (StdMethod (..))
+import Network.HTTP.Types (status200, StdMethod (..))
 import Relude
-import Web.Scotty.Trans (ScottyError, ScottyT, html, param, redirect)
+import Web.Scotty.Trans (status, next, ScottyError, ScottyT, html, param, redirect)
 
 -- Home page. Check cookies to see if logged in.
 -- If not logged in, prompt to authorize.
 -- If logged in, provide friend code input.
 handleHomePage :: (ScottyError e, MonadApp m) => ScottyT e m ()
 handleHomePage = handleRoute GET "/" $ do
-  user <- getSession
-  case user of
-    Just u@User {userID} -> do
+  maybeUser <- getSession
+  case maybeUser of
+    Just user@User {userID} -> do
       void $ enqueueUpdateUser userID
       followed <- getFollowedArtists userID
-      status <- getUpdateStatus userID
-      html $ accountPage u status followed
+      updateStatus <- getUpdateStatus userID
+      html $ accountPage user updateStatus followed
     Nothing -> html loginPage
 
 -- Authorization redirect. Generate a new user's OAuth secret and friend code. Redirect to Spotify.
@@ -100,3 +101,12 @@ handleForceRefreshUpdates = handleRoute GET "/refresh" $ do
 -- Clear logged in cookies.
 handleLogout :: (ScottyError e, MonadApp m) => ScottyT e m ()
 handleLogout = handleRoute GET "/logout" $ endSession >> redirect "/"
+
+handleHealthCheck :: (ScottyError e, MonadApp m) => Text -> ScottyT e m ()
+handleHealthCheck healthSecret = handleRoute GET "/health" $ do
+  secret <- param "secret"
+  if secret == healthSecret
+    then status status200
+    else next
+
+-- TODO: handle 404s and 500s

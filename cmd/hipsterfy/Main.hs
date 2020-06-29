@@ -8,7 +8,7 @@ import Faktory.Settings (ConnectionInfo (..), Settings (..))
 import qualified Faktory.Settings as Faktory (defaultSettings)
 import Hipsterfy.Application (Config (..), MonadApp, runAsContainer)
 import Hipsterfy.Server
-  ( handleCompare,
+  (handleHealthCheck,  handleCompare,
     handleForceRefreshUpdates,
     handleHomePage,
     handleLogin,
@@ -47,7 +47,9 @@ data Options = Options
     faktoryPort :: Int,
     faktoryPassword :: Text,
     zipkinHost :: Text,
-    zipkinPort :: Int
+    zipkinPort :: Int,
+    healthSecret :: Text,
+    podName :: Text
   }
   deriving (Show)
 
@@ -69,6 +71,8 @@ opts =
         <*> strOption (long "faktory_password")
         <*> strOption (long "zipkin_host")
         <*> option auto (long "zipkin_port")
+        <*> strOption (long "health_secret")
+        <*> strOption (long "pod_name")
 
 createRedirectURI :: (MonadThrow m) => Text -> Int -> m URI
 createRedirectURI host port = do
@@ -94,7 +98,7 @@ createRedirectURI host port = do
 
 type ServerM = ScottyT LText (TraceT (ReaderT Config IO))
 
-runServerM :: Options -> ServerM () -> IO ()
+runServerM :: Options -> (Text -> ServerM ()) -> IO ()
 runServerM Options {..} app = do
   postgres <- connectPostgreSQL $ encodeUtf8 pgConn
   faktory <- newClient faktorySettings Nothing
@@ -106,7 +110,7 @@ runServerM Options {..} app = do
   let runZipkin = (`run` zipkin)
   let runInner = runConfig . runZipkin
 
-  wai <- scottyAppT runInner app
+  wai <- scottyAppT runInner (app healthSecret)
   putStrLn $ "Starting server at: " <> renderStr redirectURI {uriPath = Nothing}
   runSettings warpSettings wai
   where
@@ -128,8 +132,8 @@ runServerM Options {..} app = do
           settingsPort = Just $ fromInteger $ toInteger zipkinPort
         }
 
-server :: (ScottyError e, MonadApp m) => ScottyT e m ()
-server = do
+server :: (ScottyError e, MonadApp m) => Text -> ScottyT e m ()
+server healthSecret = do
   middleware logStdout
 
   handleHomePage
@@ -138,6 +142,7 @@ server = do
   handleLogout
   handleCompare
   handleForceRefreshUpdates
+  handleHealthCheck healthSecret
 
 main :: IO ()
 main = do
