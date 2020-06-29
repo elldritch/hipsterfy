@@ -7,11 +7,11 @@ module Hipsterfy.Jobs.UpdateUser
 where
 
 import qualified Control.Monad.Parallel as Parallel (mapM_)
+import Control.Monad.Parallel (MonadParallel (..))
 import Data.Aeson (FromJSON, ToJSON)
-import Database.PostgreSQL.Simple (Connection)
-import Faktory.Client (Client)
 import Faktory.Job (perform, queue)
-import Faktory.Settings (Queue (Queue))
+import Faktory.Settings (Queue)
+import Hipsterfy.Application (Config (..), MonadApp)
 import Hipsterfy.Artist (Artist (..), createArtistIfNotExists)
 import Hipsterfy.Jobs.UpdateArtist (enqueueUpdateArtist)
 import Hipsterfy.Spotify
@@ -19,7 +19,6 @@ import Hipsterfy.Spotify
     getSpotifyArtistsOfSavedAlbums,
     getSpotifyArtistsOfSavedTracks,
   )
-import Hipsterfy.Spotify.Auth (SpotifyApp (..))
 import Hipsterfy.User
   ( UpdateStatus (..),
     User (..),
@@ -34,7 +33,7 @@ import Hipsterfy.User
 import Relude
 
 updateUserQueue :: Queue
-updateUserQueue = Queue "update-user"
+updateUserQueue = "update-user"
 
 {- HLINT ignore UpdateUserJob "Use newtype instead of data" -}
 data UpdateUserJob = UpdateUserJob
@@ -46,42 +45,43 @@ instance FromJSON UpdateUserJob
 
 instance ToJSON UpdateUserJob
 
-enqueueUpdateUser :: (MonadIO m) => Client -> Connection -> UserID -> m ()
-enqueueUpdateUser client conn userID = do
-  status <- getUpdateStatus conn userID
+enqueueUpdateUser :: (MonadApp m) => UserID -> m ()
+enqueueUpdateUser userID = do
+  status <- getUpdateStatus userID
   case status of
-    NeedsUpdate -> forceEnqueueUpdateUser client conn userID
+    NeedsUpdate -> forceEnqueueUpdateUser userID
     _ -> pass
 
-forceEnqueueUpdateUser :: (MonadIO m) => Client -> Connection -> UserID -> m ()
-forceEnqueueUpdateUser client conn userID = do
-  setUpdateSubmitted conn userID
-  void $ liftIO $ perform (queue updateUserQueue) client UpdateUserJob {userID}
+forceEnqueueUpdateUser :: (MonadApp m) => UserID -> m ()
+forceEnqueueUpdateUser userID = do
+  Config {faktory} <- ask
+  setUpdateSubmitted userID
+  void $ liftIO $ perform (queue updateUserQueue) faktory UpdateUserJob {userID}
 
-handleUpdateUser :: (MonadIO m) => SpotifyApp -> Client -> Connection -> UpdateUserJob -> m ()
-handleUpdateUser app client conn UpdateUserJob {userID} = do
+handleUpdateUser :: (MonadApp m, MonadParallel m) => UpdateUserJob -> m ()
+handleUpdateUser UpdateUserJob {userID} = do
   -- Get user.
-  maybeUser <- getUserByID conn userID
+  maybeUser <- getUserByID userID
   User {spotifyCredentials} <- case maybeUser of
     Just u -> return u
     Nothing -> error $ "handleUpdateUser: could not find user with ID " <> show userID
 
   -- Get artists.
-  creds <- refreshCredentialsIfNeeded app conn userID spotifyCredentials
+  creds <- refreshCredentialsIfNeeded userID spotifyCredentials
   followedArtists <- getFollowedSpotifyArtists creds
   trackArtists <- getSpotifyArtistsOfSavedTracks creds
   albumArtists <- getSpotifyArtistsOfSavedAlbums creds
 
   -- Create artists.
   let spotifyArtists = ordNub $ followedArtists ++ trackArtists ++ albumArtists
-  artists <- mapM (createArtistIfNotExists conn) spotifyArtists
+  artists <- mapM createArtistIfNotExists spotifyArtists
   let artistIDs = map artistID artists
 
   -- Update followed artists.
-  setFollowedArtists conn userID artistIDs
+  setFollowedArtists userID artistIDs
 
   -- Enqueue artist updates needed.
-  liftIO $ Parallel.mapM_ (enqueueUpdateArtist client conn) artistIDs
+  Parallel.mapM_ enqueueUpdateArtist artistIDs
 
   -- Set the update status.
-  setUpdateCompleted conn userID
+  setUpdateCompleted userID

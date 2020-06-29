@@ -14,9 +14,10 @@ where
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Map (insert, toDescList)
 import Data.Time (Day, cdDays, diffGregorianDurationClip, getCurrentTime, utctDay)
-import Database.PostgreSQL.Simple (Connection, Only (..), execute, query)
+import Database.PostgreSQL.Simple (Only (..), execute, query)
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
+import Hipsterfy.Application (Config (..), MonadApp)
 import Hipsterfy.Jobs (UpdateStatus (..), getUpdateStatusRaw, setUpdateCompletedRaw, setUpdateSubmittedRaw)
 import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), getSpotifyArtistInsights)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken)
@@ -34,12 +35,13 @@ data Artist = Artist
 
 -- Creation.
 
-createArtistIfNotExists :: (MonadIO m) => Connection -> SpotifyArtist -> m Artist
-createArtistIfNotExists conn SpotifyArtist {spotifyArtistID, spotifyURL, name} = do
+createArtistIfNotExists :: (MonadApp m) => SpotifyArtist -> m Artist
+createArtistIfNotExists SpotifyArtist {spotifyArtistID, spotifyURL, name} = do
+  Config {postgres} <- ask
   artistRows <-
     liftIO $
       query
-        conn
+        postgres
         "INSERT INTO spotify_artist\
         \ (name, spotify_artist_id, spotify_url, created_at)\
         \ VALUES\
@@ -60,12 +62,13 @@ createArtistIfNotExists conn SpotifyArtist {spotifyArtistID, spotifyURL, name} =
 
 -- Retrieval.
 
-getArtist :: (MonadIO m) => Connection -> ArtistID -> m (Maybe Artist)
-getArtist conn artistID = do
+getArtist :: (MonadApp m) => ArtistID -> m (Maybe Artist)
+getArtist artistID = do
+  Config {postgres} <- ask
   listeners <-
     liftIO $
       query
-        conn
+        postgres
         "SELECT spotify_artist_listeners.created_at, monthly_listeners\
         \ FROM spotify_artist_listeners\
         \ JOIN spotify_artist ON spotify_artist.id = spotify_artist_listeners.spotify_artist_id\
@@ -74,7 +77,7 @@ getArtist conn artistID = do
   artist <-
     liftIO $
       query
-        conn
+        postgres
         "SELECT spotify_artist_id, spotify_url, name FROM spotify_artist WHERE id = ?"
         (Only artistID)
   return $ case artist of
@@ -90,24 +93,24 @@ getArtist conn artistID = do
 
 -- Operations.
 
-refreshArtistInsights :: (MonadIO m) => Connection -> AnonymousBearerToken -> Artist -> m Artist
-refreshArtistInsights conn bearerToken artist@Artist {artistID, spotifyArtist = SpotifyArtist {spotifyArtistID}, monthlyListeners} = do
+refreshArtistInsights :: (MonadApp m) => AnonymousBearerToken -> Artist -> m Artist
+refreshArtistInsights bearerToken artist@Artist {artistID, spotifyArtist = SpotifyArtist {spotifyArtistID}, monthlyListeners} = do
+  Config {postgres} <- ask
   -- TODO: add a check for whether listeners need to be updated (whether it's a new month)?
   now <- liftIO getCurrentTime
   let today = utctDay now
   maybeNewSample <- case viaNonEmpty head $ toDescList monthlyListeners of
     Just (sampleDay, _) ->
       if cdDays (diffGregorianDurationClip today sampleDay) > 15
-        then Just <$> updateInsights
+        then Just <$> updateInsights postgres
         else return Nothing
-    _ -> Just <$> updateInsights
+    _ -> Just <$> updateInsights postgres
   return $ case maybeNewSample of
     Just newSample ->
       artist {monthlyListeners = insert today newSample monthlyListeners} :: Artist
     Nothing -> artist
   where
-    updateInsights :: (MonadIO m) => m Int
-    updateInsights = do
+    updateInsights conn = do
       SpotifyArtistInsights {monthlyListeners = newListenerSample} <-
         liftIO $ getSpotifyArtistInsights bearerToken spotifyArtistID
       void $ liftIO $
@@ -121,11 +124,11 @@ refreshArtistInsights conn bearerToken artist@Artist {artistID, spotifyArtist = 
 
 -- Update status.
 
-getUpdateStatus :: (MonadIO m) => Connection -> ArtistID -> m UpdateStatus
-getUpdateStatus conn = getUpdateStatusRaw conn "spotify_artist"
+getUpdateStatus :: (MonadApp m) => ArtistID -> m UpdateStatus
+getUpdateStatus = getUpdateStatusRaw "spotify_artist"
 
-setUpdateSubmitted :: (MonadIO m) => Connection -> ArtistID -> m ()
-setUpdateSubmitted conn = setUpdateSubmittedRaw conn "spotify_artist"
+setUpdateSubmitted :: (MonadApp m) => ArtistID -> m ()
+setUpdateSubmitted = setUpdateSubmittedRaw "spotify_artist"
 
-setUpdateCompleted :: (MonadIO m) => Connection -> ArtistID -> m ()
-setUpdateCompleted conn = setUpdateCompletedRaw conn "spotify_artist"
+setUpdateCompleted :: (MonadApp m) => ArtistID -> m ()
+setUpdateCompleted = setUpdateCompletedRaw "spotify_artist"

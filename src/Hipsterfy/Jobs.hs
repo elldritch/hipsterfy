@@ -7,8 +7,9 @@ module Hipsterfy.Jobs
 where
 
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
-import Database.PostgreSQL.Simple (Connection, Only (..), Query, execute, query)
+import Database.PostgreSQL.Simple (Only (..), Query, execute, query)
 import Database.PostgreSQL.Simple.ToField (ToField)
+import Hipsterfy.Application (Config (..), MonadApp)
 import Relude
 
 data UpdateStatus
@@ -20,20 +21,21 @@ jobInQueueTimeout :: NominalDiffTime
 jobInQueueTimeout = 60 * 5
 
 recentUpdateTimeout :: NominalDiffTime
-recentUpdateTimeout = 60 * 60 * 24
+recentUpdateTimeout = 60 * 60 * 24 * 10
 
 -- WARNING: this is super fragile and schema-dependent.
 
 toQuery :: Text -> Query
 toQuery t = fromString $ toString t
 
-getUpdateStatusRaw :: (MonadIO m, ToField i, Show i) => Connection -> Text -> i -> m UpdateStatus
-getUpdateStatusRaw conn table rowID = do
+getUpdateStatusRaw :: (MonadApp m, ToField i, Show i) => Text -> i -> m UpdateStatus
+getUpdateStatusRaw table rowID = do
+  Config {postgres} <- ask
   now <- liftIO getCurrentTime
   row <-
     liftIO $
       query
-        conn
+        postgres
         ("SELECT last_update_job_submitted, last_update_job_completed FROM " <> toQuery table <> " WHERE id = ?")
         (Only rowID)
   return $ case row of
@@ -65,18 +67,20 @@ getUpdateStatusRaw conn table rowID = do
         then NeedsUpdate
         else QueuedAt submitted
 
-setUpdateSubmittedRaw :: (MonadIO m, ToField i) => Connection -> Text -> i -> m ()
-setUpdateSubmittedRaw conn table rowID =
+setUpdateSubmittedRaw :: (MonadApp m, ToField i) => Text -> i -> m ()
+setUpdateSubmittedRaw table rowID = do
+  Config {postgres} <- ask
   void $ liftIO $
     execute
-      conn
+      postgres
       ("UPDATE " <> toQuery table <> " SET last_update_job_submitted = NOW() WHERE id = ?")
       (Only rowID)
 
-setUpdateCompletedRaw :: (MonadIO m, ToField i) => Connection -> Text -> i -> m ()
-setUpdateCompletedRaw conn table rowID =
+setUpdateCompletedRaw :: (MonadApp m, ToField i) => Text -> i -> m ()
+setUpdateCompletedRaw table rowID = do
+  Config {postgres} <- ask
   void $ liftIO $
     execute
-      conn
+      postgres
       ("UPDATE " <> toQuery table <> " SET last_update_job_completed = NOW() WHERE id = ?")
       (Only rowID)

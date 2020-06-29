@@ -1,14 +1,19 @@
 module Main (main) where
 
-import Control.Concurrent (getNumCapabilities, myThreadId, throwTo)
+import Control.Concurrent (getNumCapabilities)
 import Control.Concurrent.Async (async, wait)
 import Database.PostgreSQL.Simple (connectPostgreSQL)
 import Faktory.Client (newClient)
-import Faktory.Settings (ConnectionInfo (..), Settings (..), defaultSettings)
-import qualified Faktory.Worker as W (runWorker)
+import Faktory.Settings (ConnectionInfo (..), Settings (..))
+import qualified Faktory.Settings as Faktory (defaultSettings)
+import Faktory.Worker (runWorker)
+import Hipsterfy.Application (Config (..), runAsContainer)
+import Hipsterfy.Internal.OrphanInstances ()
 import Hipsterfy.Jobs.UpdateArtist (handleUpdateArtist, updateArtistQueue)
 import Hipsterfy.Jobs.UpdateUser (handleUpdateUser, updateUserQueue)
 import Hipsterfy.Spotify.Auth (SpotifyApp (..))
+import Monitor.Tracing.Zipkin (Settings (..), new, run)
+import qualified Monitor.Tracing.Zipkin as Zipkin (defaultSettings)
 import Options.Applicative
   ( ParserInfo,
     auto,
@@ -22,10 +27,6 @@ import Options.Applicative
     strOption,
   )
 import Relude
-import System.Exit (ExitCode (ExitSuccess))
-import System.IO (BufferMode (NoBuffering), hSetBuffering)
-import System.Posix (Handler (Catch))
-import System.Posix.Signals (installHandler, softwareTermination)
 
 data Options = Options
   { clientID :: Text,
@@ -33,7 +34,9 @@ data Options = Options
     pgConn :: Text,
     faktoryHost :: Text,
     faktoryPort :: Int,
-    faktoryPassword :: Text
+    faktoryPassword :: Text,
+    zipkinHost :: Text,
+    zipkinPort :: Int
   }
   deriving (Show)
 
@@ -51,42 +54,38 @@ opts =
         <*> strOption (long "faktory_host")
         <*> option auto (long "faktory_port")
         <*> strOption (long "faktory_password")
+        <*> strOption (long "zipkin_host")
+        <*> option auto (long "zipkin_port")
 
--- TODO: add health check
+runWorkers :: Options -> IO ()
+runWorkers Options {..} = do
+  postgres <- connectPostgreSQL $ encodeUtf8 pgConn
+  faktory <- newClient faktorySettings Nothing
+  zipkin <- new zipkinSettings
 
-main :: IO ()
-main = do
-  tid <- myThreadId
-  _ <- installHandler softwareTermination (Catch $ throwTo tid ExitSuccess) Nothing
-  hSetBuffering stdout NoBuffering
-  options <- execParser opts
-  runWorker options
-
-runWorker :: Options -> IO ()
-runWorker Options {pgConn, faktoryHost, faktoryPort, faktoryPassword, clientID, clientSecret} = do
-  conn <- connectPostgreSQL $ encodeUtf8 pgConn
-  updateArtistClient <- newClient (settingsForQ updateArtistQueue) Nothing
-  let app = SpotifyApp {clientID, clientSecret, redirectURI = error "runWorker: impossible: redirectURI never used"}
+  let spotifyApp = SpotifyApp {clientID, clientSecret, redirectURI = error "runWorker: impossible: redirectURI never used"}
+  let runConfig = (`runReaderT` Config {postgres, faktory, spotifyApp})
+  let runZipkin = (`run` zipkin)
+  let runInner = runConfig . runZipkin
 
   caps <- getNumCapabilities
   putStrLn $ "Starting workers (" <> show caps <> " threads)."
+
   updateUserWorker <-
     async
-      $ W.runWorker (settingsForQ updateUserQueue)
-      $ handleUpdateUser app updateArtistClient conn
+      $ runWorker (workerSettings updateUserQueue)
+      $ runInner . handleUpdateUser
   updateArtistWorkers <-
-    mapM
-      ( const $ async
-          $ W.runWorker (settingsForQ updateArtistQueue)
-          $ handleUpdateArtist conn
-      )
-      [1 .. caps - 1]
+    forM [1 .. caps - 1]
+      $ const
+      $ async
+      $ runWorker (workerSettings updateArtistQueue)
+      $ runInner . handleUpdateArtist
   mapM_ wait $ updateUserWorker : updateArtistWorkers
   where
-    settingsForQ queue =
-      defaultSettings
-        { settingsQueue = queue,
-          settingsConnection =
+    faktorySettings =
+      Faktory.defaultSettings
+        { settingsConnection =
             ConnectionInfo
               { connectionInfoTls = False,
                 connectionInfoHostName = toString faktoryHost,
@@ -94,3 +93,16 @@ runWorker Options {pgConn, faktoryHost, faktoryPort, faktoryPassword, clientID, 
                 connectionInfoPort = fromInteger $ toInteger faktoryPort
               }
         }
+    workerSettings queue = faktorySettings {settingsQueue = queue}
+    zipkinSettings =
+      Zipkin.defaultSettings
+        { settingsPublishPeriod = Just 1,
+          settingsHostname = Just $ toString zipkinHost,
+          settingsPort = Just $ fromInteger $ toInteger zipkinPort
+        }
+
+main :: IO ()
+main = do
+  runAsContainer
+  options <- execParser opts
+  runWorkers options

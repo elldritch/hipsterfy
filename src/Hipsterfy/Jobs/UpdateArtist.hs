@@ -6,10 +6,9 @@ module Hipsterfy.Jobs.UpdateArtist
 where
 
 import Data.Aeson (FromJSON, ToJSON)
-import Database.PostgreSQL.Simple (Connection)
-import Faktory.Client (Client)
 import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue (Queue))
+import Hipsterfy.Application (Config (..), MonadApp)
 import Hipsterfy.Artist (ArtistID, UpdateStatus (..), getArtist, getUpdateStatus, refreshArtistInsights, setUpdateCompleted, setUpdateSubmitted)
 import Hipsterfy.Spotify.Auth (getAnonymousBearerToken)
 import Relude
@@ -27,21 +26,22 @@ instance FromJSON UpdateArtistJob
 
 instance ToJSON UpdateArtistJob
 
-enqueueUpdateArtist :: (MonadIO m) => Client -> Connection -> ArtistID -> m ()
-enqueueUpdateArtist client conn artistID = do
-  status <- getUpdateStatus conn artistID
+enqueueUpdateArtist :: (MonadApp m) => ArtistID -> m ()
+enqueueUpdateArtist artistID = do
+  Config {faktory} <- ask
+  status <- getUpdateStatus artistID
   case status of
     NeedsUpdate -> do
-      setUpdateSubmitted conn artistID
-      void $ liftIO $ perform (queue updateArtistQueue) client UpdateArtistJob {artistID}
+      setUpdateSubmitted artistID
+      void $ liftIO $ perform (queue updateArtistQueue) faktory UpdateArtistJob {artistID}
     _ -> pass
 
-handleUpdateArtist :: (MonadIO m) => Connection -> UpdateArtistJob -> m ()
-handleUpdateArtist conn UpdateArtistJob {artistID} = do
-  maybeArtist <- getArtist conn artistID
+handleUpdateArtist :: (MonadApp m) => UpdateArtistJob -> m ()
+handleUpdateArtist UpdateArtistJob {artistID} = do
+  maybeArtist <- getArtist artistID
   artist <- case maybeArtist of
     Just a -> return a
     Nothing -> error $ "handleUpdateArtist: could not find artist with ID " <> show artistID
   bearerToken <- getAnonymousBearerToken
-  _ <- refreshArtistInsights conn bearerToken artist
-  setUpdateCompleted conn artistID
+  _ <- refreshArtistInsights bearerToken artist
+  setUpdateCompleted artistID
