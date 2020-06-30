@@ -56,11 +56,13 @@ import Hipsterfy.Spotify.Auth
   )
 import Monitor.Tracing (childSpan)
 import Monitor.Tracing.Zipkin (tag)
+import Opaleye (SqlInt4)
+import Opaleye.Internal.RunQuery (DefaultFromField)
 import Relude
 import Test.RandomStrings (randomASCII, randomWord)
 
 newtype UserID = UserID Int
-  deriving (Show, Eq, Ord, FromJSON, ToJSON, ToField, FromField)
+  deriving (Show, Eq, Ord, FromJSON, ToJSON, ToField, FromField, DefaultFromField SqlInt4)
 
 data User = User
   { userID :: UserID,

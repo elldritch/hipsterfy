@@ -60,7 +60,7 @@ createSession User {userID} cookieSecret = do
           (userID, cookieSecret)
 
 deleteSession :: (MonadApp m) => Text -> m ()
-deleteSession cookieSecret =do
+deleteSession cookieSecret = do
   Config {postgres} <- ask
   void
     $ childSpan "QUERY deleteSession"

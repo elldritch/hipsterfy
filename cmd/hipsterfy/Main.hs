@@ -7,9 +7,11 @@ import Faktory.Client (newClient)
 import Faktory.Settings (ConnectionInfo (..), Settings (..))
 import qualified Faktory.Settings as Faktory (defaultSettings)
 import Hipsterfy.Application (Config (..), MonadApp, runAsContainer)
+import Hipsterfy.Database (demo, getUser')
 import Hipsterfy.Server
-  (handleHealthCheck,  handleCompare,
+  ( handleCompare,
     handleForceRefreshUpdates,
+    handleHealthCheck,
     handleHomePage,
     handleLogin,
     handleLoginFinish,
@@ -104,6 +106,9 @@ runServerM Options {..} app = do
   faktory <- newClient faktorySettings Nothing
   zipkin <- new zipkinSettings
   redirectURI <- createRedirectURI host port
+  -- TODO: REMOVE TESTING HACK
+  users <- getUser' postgres
+  print users
 
   let spotifyApp = SpotifyApp {clientID, clientSecret, redirectURI = render redirectURI}
   let runConfig = (`runReaderT` Config {postgres, faktory, spotifyApp})
@@ -148,4 +153,6 @@ main :: IO ()
 main = do
   runAsContainer
   options <- execParser opts
+  -- TODO: REMOVE TESTING HACK
+  putStrLn $ fromMaybe "Empty query" demo
   runServerM options server

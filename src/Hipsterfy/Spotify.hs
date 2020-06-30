@@ -19,12 +19,14 @@ import Database.PostgreSQL.Simple.ToField (ToField)
 import Hipsterfy.Spotify.API (SpotifyPagedResponse, requestAsJSON, requestSpotifyAPI, requestSpotifyAPIPages, requestSpotifyAPIPages', spotifyAPIURL)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken (..), SpotifyCredentials (..))
 import Network.Wreq (defaults, getWith, header)
+import Opaleye (SqlText)
+import Opaleye.Internal.RunQuery (DefaultFromField)
 import Relude
 
 -- Spotify users.
 
 newtype SpotifyUserID = SpotifyUserID Text
-  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, ToField, FromField)
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, ToField, FromField, DefaultFromField SqlText)
 
 data SpotifyUser = SpotifyUser
   { spotifyUserID :: SpotifyUserID,
@@ -41,7 +43,7 @@ getSpotifyUser creds = requestSpotifyAPI creds $ spotifyAPIURL <> "/me"
 -- Spotify artists.
 
 newtype SpotifyArtistID = SpotifyArtistID Text
-  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, ToField, FromField)
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, ToField, FromField, DefaultFromField SqlText)
 
 data SpotifyArtist = SpotifyArtist
   { spotifyArtistID :: SpotifyArtistID,

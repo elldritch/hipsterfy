@@ -16,9 +16,9 @@ import Hipsterfy.Server.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Server.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify.Auth (scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
 import Hipsterfy.User (User (..), createOAuthRedirect, createUser, getFollowedArtists, getUpdateStatus, getUserByFriendCode)
-import Network.HTTP.Types (status200, StdMethod (..))
+import Network.HTTP.Types (StdMethod (..), status200)
 import Relude
-import Web.Scotty.Trans (status, next, ScottyError, ScottyT, html, param, redirect)
+import Web.Scotty.Trans (ScottyError, ScottyT, html, next, param, redirect, status)
 
 -- Home page. Check cookies to see if logged in.
 -- If not logged in, prompt to authorize.
