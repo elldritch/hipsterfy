@@ -1,7 +1,8 @@
 module Hipsterfy.Database.Jobs
   ( UpdateJobInfo,
-    UpdateJobInfoT (UpdateJobInfo),
+    UpdateJobInfoT (..),
     UpdateJobInfoF,
+    pUpdateJobInfo,
     updateJobInfoColumns,
   )
 where
@@ -13,7 +14,7 @@ import Opaleye.SqlTypes (SqlTimestamptz)
 import Opaleye.Table (TableFields, required)
 import Relude
 
-data UpdateJobInfoT ts = UpdateJobInfo
+data UpdateJobInfoT ts = UpdateJobInfoT
   { lastUpdateJobSubmitted :: ts,
     lastUpdateJobCompleted :: ts
   }
@@ -27,7 +28,7 @@ $(makeAdaptorAndInstance "pUpdateJobInfo" ''UpdateJobInfoT)
 updateJobInfoColumns :: TableFields UpdateJobInfoF UpdateJobInfoF
 updateJobInfoColumns =
   pUpdateJobInfo
-    UpdateJobInfo
+    UpdateJobInfoT
       { lastUpdateJobSubmitted = required "last_update_job_submitted",
         lastUpdateJobCompleted = required "last_update_job_completed"
       }

@@ -1,24 +1,37 @@
 module Hipsterfy.Database.User
   ( User,
-    UserT (User),
+    UserT (..),
     UserReadF,
     UserWriteF,
+    UserID,
+    UserIDT (..),
+    UserIDReadF,
+    SpotifyCredentials,
+    SpotifyCredentialsT (..),
+    pUserID,
     userTable,
+    UserArtistFollowT (..),
+    UserArtistFollowF,
+    pUserArtistFollow,
+    userArtistFollowTable,
   )
 where
 
-import Data.Profunctor.Product (p2)
+import Data.Aeson (FromJSON)
+import Data.Aeson.Types (ToJSON)
 import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
 import Data.Time (UTCTime)
-import Hipsterfy.Database.Jobs (UpdateJobInfoF, updateJobInfoColumns)
+import Hipsterfy.Database.Artist (ArtistIDReadF, ArtistIDT (..), pArtistID)
+import Hipsterfy.Database.Jobs (UpdateJobInfo, UpdateJobInfoF, updateJobInfoColumns)
 import Hipsterfy.Spotify (SpotifyUserID)
-import Hipsterfy.User (UserID)
 import Opaleye.Field (Field)
 import Opaleye.SqlTypes (SqlInt4, SqlText, SqlTimestamptz)
 import Opaleye.Table (Table, TableFields, optional, required, table)
 import Relude hiding (optional)
 
-data SpotifyCredentialsT t ts = SpotifyCredentials
+-- "hipsterfy_user" table.
+
+data SpotifyCredentialsT t ts = SpotifyCredentialsT
   { accessToken :: t,
     refreshToken :: t,
     expiration :: ts
@@ -34,43 +47,75 @@ $(makeAdaptorAndInstance "pSpotifyCredentials" ''SpotifyCredentialsT)
 spotifyCredentialsColumns :: TableFields SpotifyCredentialsF SpotifyCredentialsF
 spotifyCredentialsColumns =
   pSpotifyCredentials
-    SpotifyCredentials
+    SpotifyCredentialsT
       { accessToken = required "spotify_access_token",
         expiration = required "spotify_access_token_expiration",
         refreshToken = required "spotify_refresh_token"
       }
 
-data UserT uid suid t creds = User
+newtype UserIDT a = UserIDT a
+  deriving (Show, Eq, Ord, FromJSON, ToJSON, Functor)
+
+type UserID = UserIDT Int
+
+type UserIDReadF = UserIDT (Field SqlInt4)
+
+type UserIDWriteF = UserIDT (Maybe (Field SqlInt4))
+
+$(makeAdaptorAndInstance "pUserID" ''UserIDT)
+
+data UserT uid suid t creds u = UserT
   { userID :: uid,
     friendCode :: t,
     spotifyUserID :: suid,
     spotifyUserName :: t,
-    spotifyCredentials :: creds
+    spotifyCredentials :: creds,
+    updateJobInfo :: u
   }
   deriving (Show)
 
-type User = UserT UserID SpotifyUserID Text SpotifyCredentials
+type User = UserT UserID SpotifyUserID Text SpotifyCredentials UpdateJobInfo
 
-type UserReadF = UserT (Field SqlInt4) (Field SqlText) (Field SqlText) SpotifyCredentialsF
+type UserReadF = UserT UserIDReadF (Field SqlText) (Field SqlText) SpotifyCredentialsF UpdateJobInfoF
 
-type UserWriteF = UserT (Maybe (Field SqlInt4)) (Field SqlText) (Field SqlText) SpotifyCredentialsF
+type UserWriteF = UserT UserIDWriteF (Field SqlText) (Field SqlText) SpotifyCredentialsF UpdateJobInfoF
 
 $(makeAdaptorAndInstance "pUser" ''UserT)
 
 userColumns :: TableFields UserWriteF UserReadF
 userColumns =
   pUser
-    User
-      { userID = optional "id",
+    UserT
+      { userID = pUserID $ UserIDT $ optional "id",
         friendCode = required "friend_code",
         spotifyUserID = required "spotify_user_id",
         spotifyUserName = required "spotify_user_name",
-        spotifyCredentials = spotifyCredentialsColumns
+        spotifyCredentials = spotifyCredentialsColumns,
+        updateJobInfo = updateJobInfoColumns
       }
 
-type UserTableReadF = (UserReadF, UpdateJobInfoF)
+userTable :: Table UserWriteF UserReadF
+userTable = table "hipsterfy_user" userColumns
 
-type UserTableWriteF = (UserWriteF, UpdateJobInfoF)
+-- "hipsterfy_user_spotify_artist_follow" table.
 
-userTable :: Table UserTableWriteF UserTableReadF
-userTable = table "hipsterfy_user" $ p2 (userColumns, updateJobInfoColumns)
+data UserArtistFollowT uid aid = UserArtistFollowT
+  { followUserID :: uid,
+    followArtistID :: aid
+  }
+
+type UserArtistFollowF = UserArtistFollowT UserIDReadF ArtistIDReadF
+
+$(makeAdaptorAndInstance "pUserArtistFollow" ''UserArtistFollowT)
+
+userArtistFollowTable :: Table UserArtistFollowF UserArtistFollowF
+userArtistFollowTable =
+  table "hipsterfy_user_spotify_artist_follow" $
+    pUserArtistFollow
+      UserArtistFollowT
+        { followUserID = pUserID $ UserIDT $ required "user_id",
+          followArtistID = pArtistID $ ArtistIDT $ required "spotify_artist_id"
+        }
+
+-- TODO: "hipsterfy_user_session" table.
+-- TODO: "spotify_oauth_request" table.

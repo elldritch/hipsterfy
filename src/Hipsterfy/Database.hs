@@ -1,12 +1,24 @@
-module Hipsterfy.Database (runSelect, QueryParameters (..)) where
+module Hipsterfy.Database
+  ( runSelect,
+    runSelectOne,
+    runUpdate,
+    runInsert,
+    runDelete,
+    QueryParameters (..),
+  )
+where
 
 import Control.Monad.Trace.Class (childSpanWith)
 import Data.Profunctor.Product.Default (Default)
+import Database.PostgreSQL.Simple (Connection)
 import GHC.Generics ((:*:) (..), C, D, Generic (..), K1 (..), M1 (..), S, Selector, selName)
 import Hipsterfy.Application (Config (..), MonadApp)
+import Hipsterfy.Spotify.Auth (SpotifyCredentials)
 import Hipsterfy.Trace (spanKind, tagPairs)
 import Monitor.Tracing.Zipkin (tag)
 import Opaleye (FromFields)
+import Opaleye.Manipulation (Delete, Insert, Update)
+import qualified Opaleye.Manipulation as O (runDelete_, runInsert_, runUpdate_)
 import qualified Opaleye.RunSelect as O (runSelect)
 import Opaleye.Select (Select)
 import Relude hiding (optional)
@@ -31,8 +43,10 @@ instance (GQueryParameters a) => GQueryParameters (M1 D c a) where
 instance (GQueryParameters a) => GQueryParameters (M1 C c a) where
   gfields (M1 x) = gfields x
 
-runSelect :: (Default FromFields fs hs, MonadApp m, QueryParameters p) => Text -> (p -> Select fs) -> p -> m [hs]
-runSelect name makeQuery params = do
+instance QueryParameters SpotifyCredentials
+
+runDB :: (MonadApp m, QueryParameters p) => Text -> Text -> (Connection -> q t -> IO r) -> (p -> q t) -> p -> m r
+runDB name queryType runner queryBuilder params = do
   Config {postgres} <- ask
   childSpanWith
     (spanKind "QUERY")
@@ -41,5 +55,29 @@ runSelect name makeQuery params = do
       -- TODO: tag the specific PostgreSQL pod this query is talking to?
       tag "service.name" "postgresql"
       tag "db.query" name
+      tag "db.query.type" queryType
       tagPairs "db.params." $ fields params
-      liftIO $ O.runSelect postgres $ makeQuery params
+      liftIO $ runner postgres $ queryBuilder params
+
+runSelect :: (Default FromFields fs hs, MonadApp m, QueryParameters p) => Text -> (p -> Select fs) -> p -> m [hs]
+runSelect name = runDB name "SELECT" O.runSelect
+
+runSelectOne :: (Default FromFields fs hs, MonadApp m, QueryParameters p) => Text -> (p -> Select fs) -> p -> m (Maybe hs)
+runSelectOne name makeSelect params = do
+  rows <- runSelect name makeSelect params
+  return $ case rows of
+    [row] -> Just row
+    [] -> Nothing
+    _ -> error $ "runSelectOne: " <> name <> ": more than one row returned with params " <> renderDebugParams params
+  where
+    renderDebugParams :: (QueryParameters p) => p -> Text
+    renderDebugParams = foldr (\(k, v) s -> s <> " " <> k <> ": " <> v) "" . fields
+
+runUpdate :: (MonadApp m, QueryParameters p) => Text -> (p -> Update hs) -> p -> m hs
+runUpdate name = runDB name "UPDATE" O.runUpdate_
+
+runInsert :: (MonadApp m, QueryParameters p) => Text -> (p -> Insert hs) -> p -> m hs
+runInsert name = runDB name "INSERT" O.runInsert_
+
+runDelete :: (MonadApp m, QueryParameters p) => Text -> (p -> Delete hs) -> p -> m hs
+runDelete name = runDB name "DELETE" O.runDelete_

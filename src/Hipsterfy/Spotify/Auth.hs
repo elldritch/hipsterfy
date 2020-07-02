@@ -54,7 +54,7 @@ data SpotifyCredentials = SpotifyCredentials
     -- | The deadline after which the access token is expired.
     expiration :: UTCTime
   }
-  deriving (Show)
+  deriving (Show, Generic)
 
 -- Scopes.
 

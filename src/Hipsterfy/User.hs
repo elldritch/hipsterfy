@@ -132,8 +132,6 @@ createUser authCode oauthState =
 
 -- Retrieval.
 
-newtype GetUserByIDParams = GetUserByIDParams UserID
-
 getUserByID :: (MonadApp m) => UserID -> m (Maybe User)
 getUserByID userID =
   getUser

@@ -10,7 +10,9 @@ common lang
     NoImplicitPrelude
     Arrows
     ConstraintKinds
+    DataKinds
     DefaultSignatures
+    DeriveFunctor
     DeriveGeneric
     DuplicateRecordFields
     FlexibleContexts
@@ -23,7 +25,6 @@ common lang
     ScopedTypeVariables
     TemplateHaskell
     TypeOperators
-    DataKinds
 
   ghc-options:
     -Wall -Wincomplete-uni-patterns -Wcompat
@@ -45,6 +46,7 @@ library
   exposed-modules:
     Hipsterfy.Application
     Hipsterfy.Artist
+    Hipsterfy.Artist2
     Hipsterfy.Database
     Hipsterfy.Database.Artist
     Hipsterfy.Database.Jobs
@@ -60,10 +62,12 @@ library
     Hipsterfy.Spotify.Internal
     Hipsterfy.Trace
     Hipsterfy.User
+    Hipsterfy.User2
 
   build-depends:
     , aeson                ==1.5.1.0
     , base64               ==0.4.2
+    , exceptions           ==0.10.4
     , http-types           ==0.12.3
     , lens                 ==4.19.2
     , modern-uri           ==0.3.2.0
@@ -76,7 +80,6 @@ library
     , unix                 ==2.7.2.2
     , vector               ==0.12.1.2
     , wreq                 ==0.5.3.2
-    , exceptions      ==0.10.4
 
 common exe-deps
   build-depends:
