@@ -1,7 +1,13 @@
-module Hipsterfy.Trace () where
+module Hipsterfy.Trace (spanKind, tagPairs) where
 
-import Control.Monad.Parallel (MonadParallel (..))
-import Control.Monad.Trace (TraceT)
+import Control.Monad.Trace.Class (Builder (..), MonadTrace)
+import Data.Aeson (ToJSON (toJSON))
+import Data.Map (insert)
+import Monitor.Tracing.Zipkin (tag)
 import Relude
 
--- TODO: tracing database queries and Spotify API calls and jobs
+spanKind :: Text -> Builder -> Builder
+spanKind kind b = b {builderTags = insert "z.k" (toJSON kind) (builderTags b)}
+
+tagPairs :: (MonadTrace m) => Text -> [(Text, Text)] -> m ()
+tagPairs prefix = mapM_ (\(k, v) -> tag (prefix <> k) v)

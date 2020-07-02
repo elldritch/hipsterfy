@@ -82,11 +82,12 @@ accountPage User {spotifyUserName, friendCode, lastUpdated} status artists = con
   where
     loading = p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Some artists are still loading. Refresh for a more recent view."
 
+-- TODO: add update status to comparison + warning about refreshes
 comparePage :: [Artist] -> [Artist] -> LText
-comparePage yourFollowedArtists friendFollowedArtists = container $ do
+comparePage xs ys = container $ do
   p "Artists you both follow, in ascending order by listeners:"
   br
-  artistTable $ intersect yourFollowedArtists friendFollowedArtists
+  artistTable $ intersect xs ys
   br
   href "/" "Go back"
 

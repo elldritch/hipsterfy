@@ -1,120 +1,45 @@
-{-# LANGUAGE Arrows #-}
+module Hipsterfy.Database (runSelect, QueryParameters (..)) where
 
-module Hipsterfy.Database (demo, getUser') where
-
-import Control.Arrow (returnA)
-import Data.Profunctor.Product (p2)
-import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
-import Data.Time (UTCTime)
-import Database.PostgreSQL.Simple (Connection)
-import Hipsterfy.Spotify (SpotifyUserID)
-import Hipsterfy.User (UserID)
-import Opaleye
-  ( Field,
-    FieldNullable,
-    Select,
-    SqlInt4,
-    SqlText,
-    SqlTimestamptz,
-    Table,
-    TableFields,
-    optional,
-    required,
-    runSelect,
-    selectTable,
-    showSql,
-    table,
-  )
+import Control.Monad.Trace.Class (childSpanWith)
+import Data.Profunctor.Product.Default (Default)
+import GHC.Generics ((:*:) (..), C, D, Generic (..), K1 (..), M1 (..), S, Selector, selName)
+import Hipsterfy.Application (Config (..), MonadApp)
+import Hipsterfy.Trace (spanKind, tagPairs)
+import Monitor.Tracing.Zipkin (tag)
+import Opaleye (FromFields)
+import qualified Opaleye.RunSelect as O (runSelect)
+import Opaleye.Select (Select)
 import Relude hiding (optional)
 
-data SpotifyCredentialsT t ts = SpotifyCredentialsT
-  { accessToken :: t,
-    refreshToken :: t,
-    expiration :: ts
-  }
-  deriving (Show)
+class QueryParameters p where
+  fields :: p -> [(Text, Text)]
+  default fields :: (Generic p, GQueryParameters (Rep p)) => p -> [(Text, Text)]
+  fields = gfields . from
 
-type SpotifyCredentials = SpotifyCredentialsT Text UTCTime
+class GQueryParameters f where
+  gfields :: f a -> [(Text, Text)]
 
-type SpotifyCredentialsF = SpotifyCredentialsT (Field SqlText) (Field SqlTimestamptz)
+instance (GQueryParameters a, GQueryParameters b) => GQueryParameters (a :*: b) where
+  gfields (a :*: b) = gfields a <> gfields b
 
-$(makeAdaptorAndInstance "pSpotifyCredentials" ''SpotifyCredentialsT)
+instance (Selector s, Show p) => GQueryParameters (M1 S s (K1 i p)) where
+  gfields meta@(M1 (K1 v)) = [(toText $ selName meta, show v)]
 
-selectSpotifyCredentials :: TableFields SpotifyCredentialsF SpotifyCredentialsF
-selectSpotifyCredentials =
-  pSpotifyCredentials
-    SpotifyCredentialsT
-      { accessToken = required "spotify_access_token",
-        expiration = required "spotify_access_token_expiration",
-        refreshToken = required "spotify_refresh_token"
-      }
+instance (GQueryParameters a) => GQueryParameters (M1 D c a) where
+  gfields (M1 x) = gfields x
 
-data UserT uid suid t creds = UserT
-  { userID :: uid,
-    friendCode :: t,
-    spotifyUserID :: suid,
-    spotifyUserName :: t,
-    spotifyCredentials :: creds
-  }
-  deriving (Show)
+instance (GQueryParameters a) => GQueryParameters (M1 C c a) where
+  gfields (M1 x) = gfields x
 
-type User = UserT UserID SpotifyUserID Text SpotifyCredentials
-
-type UserReadF = UserT (Field SqlInt4) (Field SqlText) (Field SqlText) SpotifyCredentialsF
-
-type UserWriteF = UserT (Maybe (Field SqlInt4)) (Field SqlText) (Field SqlText) SpotifyCredentialsF
-
-$(makeAdaptorAndInstance "pUser" ''UserT)
-
-selectUser :: TableFields UserWriteF UserReadF
-selectUser =
-  pUser
-    UserT
-      { userID = optional "id",
-        friendCode = required "friend_code",
-        spotifyUserID = required "spotify_user_id",
-        spotifyUserName = required "spotify_user_name",
-        spotifyCredentials = selectSpotifyCredentials
-      }
-
-data UpdateJobInfoT ts = UpdateJobInfoT
-  { lastUpdateJobSubmitted :: ts,
-    lastUpdateJobCompleted :: ts
-  }
-
-type UpdateJobInfo = UpdateJobInfoT (Maybe UTCTime)
-
-type UpdateJobInfoReadF = UpdateJobInfoT (FieldNullable SqlTimestamptz)
-
-type UpdateJobInfoWriteF = UpdateJobInfoT (Maybe (FieldNullable SqlTimestamptz))
-
-$(makeAdaptorAndInstance "pUpdateJobInfo" ''UpdateJobInfoT)
-
-selectUpdateJobInfo :: TableFields UpdateJobInfoWriteF UpdateJobInfoReadF
-selectUpdateJobInfo =
-  pUpdateJobInfo
-    UpdateJobInfoT
-      { lastUpdateJobSubmitted = optional "last_update_job_submitted",
-        lastUpdateJobCompleted = optional "last_update_job_completed"
-      }
-
-type UserTableReadF = (UserReadF, UpdateJobInfoReadF)
-
-type UserTableWriteF = (UserWriteF, UpdateJobInfoWriteF)
-
-userTable :: Table UserTableWriteF UserTableReadF
-userTable =
-  table
-    "hipsterfy_user"
-    (p2 (selectUser, selectUpdateJobInfo))
-
-getUser :: Select UserReadF
-getUser = proc () -> do
-  (user, _) <- selectTable userTable -< ()
-  returnA -< user
-
-getUser' :: Connection -> IO [User]
-getUser' conn = runSelect conn getUser
-
-demo :: Maybe String
-demo = showSql getUser
+runSelect :: (Default FromFields fs hs, MonadApp m, QueryParameters p) => Text -> (p -> Select fs) -> p -> m [hs]
+runSelect name makeQuery params = do
+  Config {postgres} <- ask
+  childSpanWith
+    (spanKind "QUERY")
+    ("QUERY " <> name)
+    $ do
+      -- TODO: tag the specific PostgreSQL pod this query is talking to?
+      tag "service.name" "postgresql"
+      tag "db.query" name
+      tagPairs "db.params." $ fields params
+      liftIO $ O.runSelect postgres $ makeQuery params

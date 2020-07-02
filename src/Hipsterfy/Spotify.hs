@@ -68,8 +68,7 @@ instance FromJSON SpotifyArtist where
 
 -- Loading followed artists.
 
-{- HLINT ignore SpotifyFollowedArtistsResponse "Use newtype instead of data" -}
-data SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
+newtype SpotifyFollowedArtistsResponse = SpotifyFollowedArtistsResponse
   { artists :: SpotifyPagedResponse SpotifyArtist
   }
   deriving (Show, Generic)
@@ -80,8 +79,7 @@ getFollowedSpotifyArtists :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArti
 getFollowedSpotifyArtists creds =
   requestSpotifyAPIPages' creds artists $ spotifyAPIURL <> "/me/following?type=artist&limit=50"
 
-{- HLINT ignore SpotifyTrack "Use newtype instead of data" -}
-data SpotifyTrack = SpotifyTrack
+newtype SpotifyTrack = SpotifyTrack
   { spotifyTrackArtists :: [SpotifyArtist]
   }
 
@@ -95,8 +93,7 @@ getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m [Spotif
 getSpotifyArtistsOfSavedTracks creds =
   (return . ordNub . concatMap spotifyTrackArtists) =<< requestSpotifyAPIPages creds (spotifyAPIURL <> "/me/tracks?limit=50")
 
-{- HLINT ignore SpotifyAlbum "Use newtype instead of data" -}
-data SpotifyAlbum = SpotifyAlbum
+newtype SpotifyAlbum = SpotifyAlbum
   { spotifyAlbumArtists :: [SpotifyArtist]
   }
 
@@ -112,8 +109,7 @@ getSpotifyArtistsOfSavedAlbums creds =
 
 -- Loading artist monthly listeners.
 
-{- HLINT ignore SpotifyArtistInsights "Use newtype instead of data" -}
-data SpotifyArtistInsights = SpotifyArtistInsights
+newtype SpotifyArtistInsights = SpotifyArtistInsights
   { monthlyListeners :: Int
   }
   deriving (Show, Eq, Ord)

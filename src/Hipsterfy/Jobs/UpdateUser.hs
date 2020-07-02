@@ -11,7 +11,7 @@ import Control.Monad.Parallel (MonadParallel (..))
 import Data.Aeson (FromJSON, ToJSON)
 import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue)
-import Hipsterfy.Application (Config (..), MonadApp)
+import Hipsterfy.Application (Config (..), Faktory (..), MonadApp)
 import Hipsterfy.Artist (Artist (..), createArtistIfNotExists)
 import Hipsterfy.Jobs.UpdateArtist (enqueueUpdateArtist)
 import Hipsterfy.Spotify
@@ -35,8 +35,7 @@ import Relude
 updateUserQueue :: Queue
 updateUserQueue = "update-user"
 
-{- HLINT ignore UpdateUserJob "Use newtype instead of data" -}
-data UpdateUserJob = UpdateUserJob
+newtype UpdateUserJob = UpdateUserJob
   { userID :: UserID
   }
   deriving (Generic)
@@ -54,9 +53,9 @@ enqueueUpdateUser userID = do
 
 forceEnqueueUpdateUser :: (MonadApp m) => UserID -> m ()
 forceEnqueueUpdateUser userID = do
-  Config {faktory} <- ask
+  Config {faktory = Faktory {client}} <- ask
   setUpdateSubmitted userID
-  void $ liftIO $ perform (queue updateUserQueue) faktory UpdateUserJob {userID}
+  void $ liftIO $ perform (queue updateUserQueue) client UpdateUserJob {userID}
 
 handleUpdateUser :: (MonadApp m, MonadParallel m) => UpdateUserJob -> m ()
 handleUpdateUser UpdateUserJob {userID} = do

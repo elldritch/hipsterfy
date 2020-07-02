@@ -16,8 +16,7 @@ import Relude
 import System.Environment (withArgs)
 import Test.Hspec (hspec)
 
-{- HLINT ignore Options "Use newtype instead of data" -}
-data Options = Options
+newtype Options = Options
   { accessToken :: Text
   }
 

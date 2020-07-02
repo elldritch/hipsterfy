@@ -1,28 +1,40 @@
-module Hipsterfy.Server.Handlers (handleRoute, tagUser) where
+module Hipsterfy.Server.Handlers
+  ( get,
+    post,
+    tagUser,
+  )
+where
 
-import Control.Monad.Trace.Class (Builder (..), MonadTrace (..), rootSpanWith)
-import Data.Aeson (ToJSON (..))
+import Control.Monad.Trace.Class (MonadTrace, rootSpanWith)
+import Hipsterfy.Application (MonadApp)
 import Hipsterfy.Server.Internal.OrphanInstances ()
+import Hipsterfy.Trace (spanKind, tagPairs)
 import Hipsterfy.User (User (..))
 import Monitor.Tracing (alwaysSampled)
 import Monitor.Tracing.Zipkin (tag)
-import Network.HTTP.Types (Status (..), StdMethod)
+import Network.HTTP.Types (Status (..), StdMethod (..))
 import Network.Wai (Request (..))
-import Relude hiding (trace)
-import Relude.Extra (bimapF, insert)
+import Relude hiding (get, trace)
+import qualified Relude as R (get)
+import Relude.Extra (bimapF)
 import Web.Scotty.Internal.Types (ActionT (..), srStatus)
 import Web.Scotty.Trans (ScottyError (..), ScottyT, addroute, headers, params, raise, request, rescue)
 
+get :: (ScottyError e, MonadApp m) => Text -> ActionT e m () -> ScottyT e m ()
+get = handleRoute GET
+
+post :: (ScottyError e, MonadApp m) => Text -> ActionT e m () -> ScottyT e m ()
+post = handleRoute POST
+
 handleRoute ::
   forall e m.
-  (ScottyError e, MonadIO m, MonadTrace m) =>
+  (ScottyError e, MonadApp m) =>
   StdMethod ->
   Text ->
   ActionT e m () ->
   ScottyT e m ()
 handleRoute method routePattern action =
   addroute method (fromString $ toString routePattern)
-    -- TODO: can we should trace the entire ScottyT? How else do we pick up e.g. 404s?
     $ rootSpanWith (spanKind "ROUTE") alwaysSampled spanName
     $ do
       req <- request
@@ -39,19 +51,15 @@ handleRoute method routePattern action =
       status <- getStatus
       tag "http.statusCode" $ show $ statusCode status
   where
-    spanKind :: Text -> Builder -> Builder
-    spanKind kind = \b -> b {builderTags = insert "z.k" (toJSON kind) (builderTags b)}
     spanName = show method <> " " <> routePattern
     tagError :: e -> ActionT e m ()
     tagError err = do
       tag "error" $ toText $ showError err
       tag "http.statusCode" $ show (500 :: Int)
       raise err
-    tagPairs :: Text -> [(Text, Text)] -> m ()
-    tagPairs prefix = mapM_ (\(k, v) -> tag (prefix <> k) v)
 
 getStatus :: (Monad m) => ActionT e m Status
-getStatus = ActionT $ srStatus <$> get
+getStatus = ActionT $ srStatus <$> R.get
 
 tagUser :: (MonadTrace m) => User -> m ()
 tagUser User {userID} = tag "user" $ show userID

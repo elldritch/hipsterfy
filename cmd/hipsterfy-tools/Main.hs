@@ -22,13 +22,11 @@ import Options.Applicative
   )
 import Relude
 
-{- HLINT ignore Options "Use newtype instead of data" -}
-data Options = Options
+newtype Options = Options
   { cmd :: Command
   }
 
-{- HLINT ignore Command "Use newtype instead of data" -}
-data Command
+newtype Command
   = GetToken GetTokenOptions
 
 data GetTokenOptions = GetTokenOptions

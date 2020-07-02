@@ -10,6 +10,7 @@ common lang
     NoImplicitPrelude
     Arrows
     ConstraintKinds
+    DefaultSignatures
     DeriveGeneric
     DuplicateRecordFields
     FlexibleContexts
@@ -21,6 +22,8 @@ common lang
     RecordWildCards
     ScopedTypeVariables
     TemplateHaskell
+    TypeOperators
+    DataKinds
 
   ghc-options:
     -Wall -Wincomplete-uni-patterns -Wcompat
@@ -43,6 +46,9 @@ library
     Hipsterfy.Application
     Hipsterfy.Artist
     Hipsterfy.Database
+    Hipsterfy.Database.Artist
+    Hipsterfy.Database.Jobs
+    Hipsterfy.Database.User
     Hipsterfy.Internal.OrphanInstances
     Hipsterfy.Jobs
     Hipsterfy.Jobs.UpdateArtist
@@ -70,6 +76,7 @@ library
     , unix                 ==2.7.2.2
     , vector               ==0.12.1.2
     , wreq                 ==0.5.3.2
+    , exceptions      ==0.10.4
 
 common exe-deps
   build-depends:
