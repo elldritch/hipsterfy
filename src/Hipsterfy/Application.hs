@@ -3,6 +3,7 @@
 module Hipsterfy.Application
   ( Config (..),
     MonadApp,
+    AppT,
     runApp,
     makePostgres,
     Faktory (..),

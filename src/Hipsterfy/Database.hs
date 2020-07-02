@@ -3,16 +3,18 @@ module Hipsterfy.Database
     runSelectOne,
     runUpdate,
     runInsert,
+    runInsertOne,
     runDelete,
     QueryParameters (..),
+    runTransaction,
   )
 where
 
 import Control.Monad.Trace.Class (childSpanWith)
 import Data.Profunctor.Product.Default (Default)
-import Database.PostgreSQL.Simple (Connection)
+import Database.PostgreSQL.Simple (Connection, withTransaction)
 import GHC.Generics ((:*:) (..), C, D, Generic (..), K1 (..), M1 (..), S, Selector, selName)
-import Hipsterfy.Application (Config (..), MonadApp)
+import Hipsterfy.Application (AppT, Config (..), MonadApp, runApp)
 import Hipsterfy.Spotify.Auth (SpotifyCredentials)
 import Hipsterfy.Trace (spanKind, tagPairs)
 import Monitor.Tracing.Zipkin (tag)
@@ -59,6 +61,9 @@ runDB name queryType runner queryBuilder params = do
       tagPairs "db.params." $ fields params
       liftIO $ runner postgres $ queryBuilder params
 
+renderDebugParams :: (QueryParameters p) => p -> Text
+renderDebugParams = foldr (\(k, v) s -> s <> " " <> k <> ": " <> v) "" . fields
+
 runSelect :: (Default FromFields fs hs, MonadApp m, QueryParameters p) => Text -> (p -> Select fs) -> p -> m [hs]
 runSelect name = runDB name "SELECT" O.runSelect
 
@@ -69,9 +74,6 @@ runSelectOne name makeSelect params = do
     [row] -> Just row
     [] -> Nothing
     _ -> error $ "runSelectOne: " <> name <> ": more than one row returned with params " <> renderDebugParams params
-  where
-    renderDebugParams :: (QueryParameters p) => p -> Text
-    renderDebugParams = foldr (\(k, v) s -> s <> " " <> k <> ": " <> v) "" . fields
 
 runUpdate :: (MonadApp m, QueryParameters p) => Text -> (p -> Update hs) -> p -> m hs
 runUpdate name = runDB name "UPDATE" O.runUpdate_
@@ -79,5 +81,19 @@ runUpdate name = runDB name "UPDATE" O.runUpdate_
 runInsert :: (MonadApp m, QueryParameters p) => Text -> (p -> Insert hs) -> p -> m hs
 runInsert name = runDB name "INSERT" O.runInsert_
 
+runInsertOne :: (MonadApp m, QueryParameters p) => Text -> (p -> Insert [hs]) -> p -> m hs
+runInsertOne name makeInsert params = do
+  rows <- runDB name "INSERT" O.runInsert_ makeInsert params
+  return $ case rows of
+    [row] -> row
+    [] -> error $ "runInsertOne: " <> name <> ": zero rows returned with params " <> renderDebugParams params
+    _ -> error $ "runInsertOne: " <> name <> ": more than one row returned with params " <> renderDebugParams params
+
 runDelete :: (MonadApp m, QueryParameters p) => Text -> (p -> Delete hs) -> p -> m hs
 runDelete name = runDB name "DELETE" O.runDelete_
+
+runTransaction :: (MonadApp m) => AppT IO a -> m a
+runTransaction action = do
+  config@Config {postgres} <- ask
+  liftIO $ withTransaction postgres $ do
+    runApp config action

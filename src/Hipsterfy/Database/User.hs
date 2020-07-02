@@ -14,6 +14,10 @@ module Hipsterfy.Database.User
     UserArtistFollowF,
     pUserArtistFollow,
     userArtistFollowTable,
+    SpotifyOAuthRequest,
+    SpotifyOAuthRequestT (..),
+    SpotifyOAuthRequestF,
+    spotifyOAuthRequestTable,
   )
 where
 
@@ -117,5 +121,24 @@ userArtistFollowTable =
           followArtistID = pArtistID $ ArtistIDT $ required "spotify_artist_id"
         }
 
+-- "spotify_oauth_request" table.
+
+newtype SpotifyOAuthRequestT t = SpotifyOAuthRequestT
+  { oauth2State :: t
+  }
+
+type SpotifyOAuthRequest = SpotifyOAuthRequestT Text
+
+type SpotifyOAuthRequestF = SpotifyOAuthRequestT (Field SqlText)
+
+$(makeAdaptorAndInstance "pSpotifyOAuthRequest" ''SpotifyOAuthRequestT)
+
+spotifyOAuthRequestTable :: Table SpotifyOAuthRequestF SpotifyOAuthRequestF
+spotifyOAuthRequestTable =
+  table "spotify_oauth_request" $
+    pSpotifyOAuthRequest
+      SpotifyOAuthRequestT
+        { oauth2State = required "oauth2_state"
+        }
+
 -- TODO: "hipsterfy_user_session" table.
--- TODO: "spotify_oauth_request" table.

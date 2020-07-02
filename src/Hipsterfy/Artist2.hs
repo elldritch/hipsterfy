@@ -12,8 +12,8 @@ import Hipsterfy.Database.Artist (ArtistIDReadF, ArtistIDT (..))
 import qualified Hipsterfy.Database.Artist as D (ArtistID)
 import Hipsterfy.Jobs (UpdateJobInfo)
 import Hipsterfy.Spotify (SpotifyArtist)
-import Relude
 import Opaleye.SqlTypes (sqlInt4)
+import Relude
 
 newtype ArtistID = ArtistID Int
   deriving (Show, Eq, Ord, FromJSON, ToJSON)

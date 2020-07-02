@@ -3,6 +3,8 @@
 module Hipsterfy.User2
   ( User (..),
     UserID,
+    createOAuthRedirect,
+    createUser,
     getUserByID,
     getUserBySpotifyID,
     getUserByFriendCode,
@@ -19,23 +21,48 @@ import Data.Profunctor.Product (p2)
 import Data.Time (UTCTime, getCurrentTime, utctDay)
 import Hipsterfy.Application (Config (..), MonadApp)
 import Hipsterfy.Artist2 (Artist (..), ArtistID, fromDatabaseArtistID, toDatabaseArtistID)
-import Hipsterfy.Database (QueryParameters, runDelete, runInsert, runSelect, runSelectOne, runUpdate)
-import Hipsterfy.Database.Artist (ArtistIDT (..), ArtistListenersF, ArtistListenersT (..), ArtistReadF, ArtistT (..), artistListenersTable, artistTable, pArtist, pArtistID, pArtistListeners)
+import Hipsterfy.Database (QueryParameters, runDelete, runInsert, runInsertOne, runSelect, runSelectOne, runTransaction, runUpdate)
+import Hipsterfy.Database.Artist
+  ( ArtistIDT (..),
+    ArtistListenersF,
+    ArtistListenersT (..),
+    ArtistReadF,
+    ArtistT (..),
+    artistListenersTable,
+    artistTable,
+    pArtist,
+    pArtistID,
+    pArtistListeners,
+  )
 import qualified Hipsterfy.Database.Artist as D (Artist)
 import Hipsterfy.Database.Jobs (UpdateJobInfoT (..), pUpdateJobInfo)
-import Hipsterfy.Database.User (SpotifyCredentialsT (..), UserArtistFollowT (..), UserIDReadF, UserIDT (..), UserReadF, UserT (..), userArtistFollowTable, userTable)
+import Hipsterfy.Database.User
+  ( SpotifyCredentialsT (..),
+    SpotifyOAuthRequest,
+    SpotifyOAuthRequestF,
+    SpotifyOAuthRequestT (..),
+    UserArtistFollowT (..),
+    UserIDReadF,
+    UserIDT (..),
+    UserReadF,
+    UserT (..),
+    spotifyOAuthRequestTable,
+    userArtistFollowTable,
+    userTable,
+  )
 import qualified Hipsterfy.Database.User as D (User, UserID)
 import Hipsterfy.Jobs (UpdateJobInfo (..))
-import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyUserID (..))
-import Hipsterfy.Spotify.Auth (Scope, SpotifyCredentials (..), requestAccessTokenFromRefreshToken)
+import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyUser (..), SpotifyUserID (..), getSpotifyUser)
+import Hipsterfy.Spotify.Auth (Scope, SpotifyCredentials (..), authorizationURL, requestAccessTokenFromAuthorizationCode, requestAccessTokenFromRefreshToken)
 import Opaleye.Aggregate (aggregate, arrayAgg, groupBy)
-import Opaleye.Field (Field)
-import Opaleye.Manipulation (Delete (..), Insert (..), Update (..), rCount, updateEasy)
+import Opaleye.Field (Field, null)
+import Opaleye.Manipulation (Delete (..), Insert (..), Update (..), rCount, rReturning, updateEasy)
 import Opaleye.Operators ((.==), (.===), restrict)
 import Opaleye.Select (Select)
 import Opaleye.SqlTypes (SqlArray, SqlBool, SqlInt4, SqlTimestamptz, sqlInt4, sqlStrictText, sqlUTCTime)
 import Opaleye.Table (selectTable)
-import Relude
+import Relude hiding (null)
+import Test.RandomStrings (randomASCII, randomWord)
 
 -- Application data structures.
 
@@ -50,6 +77,7 @@ data User = User
     spotifyCredentials :: SpotifyCredentials,
     updateJobInfo :: UpdateJobInfo
   }
+  deriving (Show, Generic)
 
 toUser :: D.User -> User
 toUser UserT {..} =
@@ -76,6 +104,8 @@ newtype UserIDParam = UserIDParam {userID :: UserID} deriving (Generic)
 
 instance QueryParameters UserIDParam
 
+instance QueryParameters User
+
 newtype SpotifyUserIDParam = SpotifyUserIDParam {spotifyUserID :: SpotifyUserID} deriving (Generic)
 
 instance QueryParameters SpotifyUserIDParam
@@ -83,6 +113,10 @@ instance QueryParameters SpotifyUserIDParam
 newtype FriendCodeParam = FriendCodeParam {friendCode :: Text} deriving (Generic)
 
 instance QueryParameters FriendCodeParam
+
+newtype OAuth2StateParam = OAuth2StateParam {oauth2State :: Text} deriving (Generic)
+
+instance QueryParameters OAuth2StateParam
 
 data FollowedArtistsParams = FollowedArtistsParams
   { userID :: UserID,
@@ -92,65 +126,101 @@ data FollowedArtistsParams = FollowedArtistsParams
 
 instance QueryParameters FollowedArtistsParams
 
-
 -- Signup and creation.
 
 createOAuthRedirect :: (MonadApp m) => [Scope] -> m LText
 createOAuthRedirect scopes = do
-  undefined
-  -- Config {postgres, spotifyApp} <- ask
-  -- oauthState <- liftIO $ toText <$> randomWord randomASCII 20
-  -- void $ liftIO $ execute postgres "INSERT INTO spotify_oauth_request (oauth2_state, created_at) VALUES (?, NOW())" (Only oauthState)
-  -- return $ authorizationURL spotifyApp scopes oauthState
+  Config {spotifyApp} <- ask
+  oauth2State <- liftIO $ toText <$> randomWord randomASCII 20
+  void $ runInsert "insertOAuth2Request" makeInsert $ OAuth2StateParam oauth2State
+  return $ authorizationURL spotifyApp scopes oauth2State
+  where
+    makeInsert :: OAuth2StateParam -> Insert Int64
+    makeInsert (OAuth2StateParam oauth2State) =
+      Insert
+        { iTable = spotifyOAuthRequestTable,
+          iRows = [SpotifyOAuthRequestT {oauth2State = sqlStrictText oauth2State}],
+          iReturning = rCount,
+          iOnConflict = Nothing
+        }
 
-createUser :: (MonadApp m) => Text -> Text -> m (Either Text User)
-createUser authCode oauthState =
-  undefined
-  -- runExceptT $ do
-  --   Config {spotifyApp, postgres} <- ask
-  --   -- Validate the OAuth state, then delete that state.
-  --   oauthStateRows <- liftIO (query postgres "SELECT oauth2_state FROM spotify_oauth_request WHERE oauth2_state = ?" (Only oauthState) :: IO [Only Text])
-  --   spotifyCredentials <- liftEither =<< case oauthStateRows of
-  --     [_] -> do
-  --       void $ liftIO $ execute postgres "DELETE FROM spotify_oauth_request WHERE oauth2_state = ?" (Only oauthState)
-  --       Right <$> requestAccessTokenFromAuthorizationCode spotifyApp authCode
-  --     _ -> throwError "invalid OAuth request state"
+createUser :: (MonadApp m) => Text -> Text -> m User
+createUser authCode oauth2State = do
+  runTransaction $ do
+    Config {spotifyApp} <- ask
+    -- Validate the OAuth state, then delete that OAuth request.
+    maybeReq :: Maybe SpotifyOAuthRequest <- runSelectOne "getOAuthRequest" getOAuthRequest $ OAuth2StateParam oauth2State
+    spotifyCredentials <- case maybeReq of
+      Just _ -> do
+        void $ runDelete "deleteOAuthRequest" deleteOAuthRequest $ OAuth2StateParam oauth2State
+        requestAccessTokenFromAuthorizationCode spotifyApp authCode
+      Nothing -> error "createUser: invalid OAuth request state"
 
-  --   -- Exchange OAuth authorization code for credentials.
-  --   spotifyUser@SpotifyUser {spotifyUserID, spotifyUserName} <- liftIO $ getSpotifyUser spotifyCredentials
+    -- Exchange OAuth authorization code for credentials.
+    SpotifyUser {spotifyUserID, spotifyUserName} <- liftIO $ getSpotifyUser spotifyCredentials
 
-  --   -- Construct a user if one doesn't already exist.
-  --   user <- lift $ getUserBySpotifyID spotifyUserID
-  --   case user of
-  --     Just u -> return u
-  --     Nothing -> do
-  --       friendCode <- liftIO $ toText <$> randomWord randomASCII 20
-  --       userRows <- liftIO $ insertUser postgres friendCode spotifyUser spotifyCredentials
-  --       case userRows of
-  --         [Only userID] -> return $ User {userID, friendCode, spotifyUserID, spotifyUserName, spotifyCredentials, lastUpdated = Nothing}
-  --         [] -> error "createUser: impossible: insert of single User returned 0 rows"
-  --         _ -> error "createUser: impossible: insert of single User returned more than 1 row"
-  -- where
-  --   insertUser conn friendCode SpotifyUser {spotifyUserID, spotifyUserName} SpotifyCredentials {accessToken, expiration, refreshToken} =
-  --     query
-  --       conn
-  --       "INSERT INTO hipsterfy_user\
-  --       \ (friend_code,\
-  --       \  spotify_user_id,\
-  --       \  spotify_user_name,\
-  --       \  spotify_access_token,\
-  --       \  spotify_access_token_expiration,\
-  --       \  spotify_refresh_token,\
-  --       \  created_at)\
-  --       \ VALUES (?, ?, ?, ?, ?, ?, NOW())\
-  --       \ RETURNING id"
-  --       ( friendCode,
-  --         spotifyUserID,
-  --         spotifyUserName,
-  --         accessToken,
-  --         expiration,
-  --         refreshToken
-  --       )
+    -- Construct a user if one doesn't already exist.
+    maybeUser <- getUserBySpotifyID spotifyUserID
+    case maybeUser of
+      Just user -> return user
+      Nothing -> do
+        friendCode <- liftIO $ toText <$> randomWord randomASCII 20
+        let user =
+              User
+                { userID = error "createUser: impossible: userID not used during insertion",
+                  friendCode,
+                  spotifyUserID,
+                  spotifyUserName,
+                  spotifyCredentials,
+                  updateJobInfo =
+                    UpdateJobInfo
+                      { lastUpdateJobSubmitted = Nothing,
+                        lastUpdateJobCompleted = Nothing
+                      }
+                }
+        uid <- runInsertOne "insertUser" insertUser user
+        return (user {userID = fromDatabaseUserID uid} :: User)
+  where
+    getOAuthRequest :: OAuth2StateParam -> Select SpotifyOAuthRequestF
+    getOAuthRequest (OAuth2StateParam paramState) = proc () -> do
+      reqs@(SpotifyOAuthRequestT rowState) <- selectTable spotifyOAuthRequestTable -< ()
+      restrict -< rowState .== sqlStrictText paramState
+      returnA -< reqs
+    deleteOAuthRequest :: OAuth2StateParam -> Delete Int64
+    deleteOAuthRequest (OAuth2StateParam paramState) =
+      Delete
+        { dTable = spotifyOAuthRequestTable,
+          dWhere = \SpotifyOAuthRequestT {oauth2State = rowState} -> rowState .== sqlStrictText paramState,
+          dReturning = rCount
+        }
+    insertUser :: User -> Insert [D.UserID]
+    insertUser User {..} =
+      let SpotifyCredentials {..} = spotifyCredentials
+          (SpotifyUserID suid) = spotifyUserID
+       in Insert
+            { iTable = userTable,
+              iRows =
+                [ UserT
+                    { userID = UserIDT Nothing,
+                      friendCode = sqlStrictText friendCode,
+                      spotifyUserID = sqlStrictText suid,
+                      spotifyUserName = sqlStrictText spotifyUserName,
+                      spotifyCredentials =
+                        SpotifyCredentialsT
+                          { accessToken = sqlStrictText accessToken,
+                            refreshToken = sqlStrictText refreshToken,
+                            expiration = sqlUTCTime expiration
+                          },
+                      updateJobInfo =
+                        UpdateJobInfoT
+                          { lastUpdateJobSubmitted = null,
+                            lastUpdateJobCompleted = null
+                          }
+                    }
+                ],
+              iReturning = rReturning (\UserT {userID = uid} -> uid),
+              iOnConflict = Nothing
+            }
 
 -- Retrieval.
 
@@ -294,10 +364,11 @@ getFollowedArtists userID = do
 
 setFollowedArtists :: (MonadApp m) => UserID -> [ArtistID] -> m ()
 setFollowedArtists userID artistIDs = do
-  -- Clear previous follows.
-  void $ runDelete "deleteFollowedArtists" makeDelete $ UserIDParam userID
-  -- Insert new follows.
-  void $ runInsert "insertFollowedArtists" makeInserts $ FollowedArtistsParams userID artistIDs
+  runTransaction $ do
+    -- Clear previous follows.
+    void $ runDelete "deleteFollowedArtists" makeDelete $ UserIDParam userID
+    -- Insert new follows.
+    void $ runInsert "insertFollowedArtists" makeInserts $ FollowedArtistsParams userID artistIDs
   where
     makeDelete :: UserIDParam -> Delete Int64
     makeDelete (UserIDParam paramUID) =

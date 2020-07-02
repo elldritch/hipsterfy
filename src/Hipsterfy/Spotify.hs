@@ -16,7 +16,14 @@ import Control.Lens ((.~))
 import Data.Aeson ((.:), (.:?), FromJSON (..), ToJSON, withObject)
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
-import Hipsterfy.Spotify.API (SpotifyPagedResponse, requestAsJSON, requestSpotifyAPI, requestSpotifyAPIPages, requestSpotifyAPIPages', spotifyAPIURL)
+import Hipsterfy.Spotify.API
+  ( SpotifyPagedResponse,
+    requestAsJSON,
+    requestSpotifyAPI,
+    requestSpotifyAPIPages,
+    requestSpotifyAPIPages',
+    spotifyAPIURL,
+  )
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken (..), SpotifyCredentials (..))
 import Network.Wreq (defaults, getWith, header)
 import Opaleye (SqlText)
