@@ -47,6 +47,7 @@ handleRoute method routePattern action =
       ps <- params
       lift $ tagPairs "http.params." $ bimapF toText toText ps
       tag "service.name" "hipsterfy-server"
+      -- TODO: how do we make this work for exceptions in general? I can't fit `catch` into here
       action `rescue` tagError
       status <- getStatus
       tag "http.statusCode" $ show $ statusCode status

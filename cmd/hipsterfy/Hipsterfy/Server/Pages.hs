@@ -1,11 +1,13 @@
 module Hipsterfy.Server.Pages (loginPage, accountPage, comparePage) where
 
+import qualified Data.HashMap.Strict as HashMap
 import Data.List (intersect)
 import Data.List.Split (chunksOf)
-import Data.Map (toDescList)
+import Data.Time (Day)
 import Hipsterfy.Artist (Artist (..))
+import Hipsterfy.Jobs (UpdateJobInfo (..), UpdateStatus (..))
 import Hipsterfy.Spotify (SpotifyArtist (..))
-import Hipsterfy.User (UpdateStatus (..), User (..))
+import Hipsterfy.User (User (..))
 import Relude hiding (div)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Blaze.Html5 hiding (body, contents, head, map)
@@ -47,7 +49,7 @@ loginPage = render $ do
         $ "Sign in with Spotify"
 
 accountPage :: User -> UpdateStatus -> [Artist] -> LText
-accountPage User {spotifyUserName, friendCode, lastUpdated} status artists = container $ do
+accountPage User {spotifyUserName, friendCode, updateJobInfo = UpdateJobInfo {lastUpdateJobCompleted}} status artists = container $ do
   p $
     "Logged in as "
       <> toHtml spotifyUserName
@@ -70,7 +72,7 @@ accountPage User {spotifyUserName, friendCode, lastUpdated} status artists = con
     h2 ! A.class_ "text-2xl mt-12 mb-2" $ "Artists you follow"
     case status of
       QueuedAt _ -> loading
-      _ -> case lastUpdated of
+      _ -> case lastUpdateJobCompleted of
         Just t ->
           p ! A.class_ "mb-2 text-sm text-gray-500 " $ do
             "Last updated at " <> show t <> ". "
@@ -99,7 +101,7 @@ artistTable artists =
       $ do
         th ! A.class_ "font-medium text-left align-top" $ "Artist"
         th ! A.class_ "font-medium text-right align-top" ! A.style "min-width: 8rem" $ "Monthly listeners"
-    tbody $ mconcat $ fmap renderArtist $ sortHipster $ ordNub artists
+    tbody $ mconcat $ fmap renderArtist $ sortHipster $ hashNub artists
   where
     sortHipster :: [Artist] -> [Artist]
     sortHipster = sortOn $ fromMaybe 0 . listeners . monthlyListeners
@@ -110,8 +112,8 @@ artistTable artists =
         td ! A.class_ "text-right" $ toHtml $ maybe "?" formatInt (listeners monthlyListeners)
     formatInt :: Int -> LText
     formatInt = toLText . reverse . intercalate "," . chunksOf 3 . reverse . show
-    listeners :: Map t Int -> Maybe Int
-    listeners m = fmap snd $ viaNonEmpty head $ toDescList m
+    listeners :: HashMap Day Int -> Maybe Int
+    listeners m = fmap snd $ viaNonEmpty head $ reverse $ sort $ HashMap.toList m
 
 href :: Text -> Html -> Html
 href url = a ! A.class_ "underline text-blue-700" ! A.href (textValue url)

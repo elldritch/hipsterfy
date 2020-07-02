@@ -15,10 +15,11 @@ import Hipsterfy.Server.Handlers (get, post)
 import Hipsterfy.Server.Pages (accountPage, comparePage, loginPage)
 import Hipsterfy.Server.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify.Auth (scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
-import Hipsterfy.User (User (..), createOAuthRedirect, createUser, getFollowedArtists, getUpdateStatus, getUserByFriendCode)
+import Hipsterfy.User (User (..), createOAuthRedirect, createUser, getFollowedArtists, getUserByFriendCode)
 import Network.HTTP.Types (status200)
 import Relude hiding (get)
 import Web.Scotty.Trans (ScottyError, ScottyT, html, next, param, redirect, status)
+import Hipsterfy.Jobs (infoToStatus)
 
 -- Home page. Check cookies to see if logged in.
 -- If not logged in, prompt to authorize.
@@ -27,10 +28,10 @@ handleHomePage :: (ScottyError e, MonadApp m) => ScottyT e m ()
 handleHomePage = get "/" $ do
   maybeUser <- getSession
   case maybeUser of
-    Just user@User {userID} -> do
+    Just user@User {userID, updateJobInfo} -> do
       void $ enqueueUpdateUser userID
       followed <- getFollowedArtists userID
-      updateStatus <- getUpdateStatus userID
+      updateStatus <- infoToStatus updateJobInfo
       html $ accountPage user updateStatus followed
     Nothing -> html loginPage
 
@@ -53,12 +54,7 @@ handleLoginFinish = get "/authorize/callback" $ do
   -- Obtain access tokens.
   code <- param "code"
   oauthState <- param "state"
-  eitherUser <- createUser code oauthState
-  user <- case eitherUser of
-    Right user -> return user
-    Left err -> do
-      print err
-      redirect "/"
+  user <- createUser code oauthState
 
   -- Create a new session.
   startSession user

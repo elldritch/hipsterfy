@@ -13,6 +13,7 @@ import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue)
 import Hipsterfy.Application (Config (..), Faktory (..), MonadApp)
 import Hipsterfy.Artist (Artist (..), createArtistIfNotExists)
+import Hipsterfy.Jobs (UpdateStatus (..), infoToStatus)
 import Hipsterfy.Jobs.UpdateArtist (enqueueUpdateArtist)
 import Hipsterfy.Spotify
   ( getFollowedSpotifyArtists,
@@ -20,10 +21,8 @@ import Hipsterfy.Spotify
     getSpotifyArtistsOfSavedTracks,
   )
 import Hipsterfy.User
-  ( UpdateStatus (..),
-    User (..),
+  ( User (..),
     UserID,
-    getUpdateStatus,
     getUserByID,
     refreshCredentialsIfNeeded,
     setFollowedArtists,
@@ -46,7 +45,11 @@ instance ToJSON UpdateUserJob
 
 enqueueUpdateUser :: (MonadApp m) => UserID -> m ()
 enqueueUpdateUser userID = do
-  status <- getUpdateStatus userID
+  maybeUser <- getUserByID userID
+  User {updateJobInfo} <- case maybeUser of
+    Just user -> return user
+    Nothing -> error $ "enqueueUpdateUser: no user found with ID " <> show userID
+  status <- infoToStatus updateJobInfo
   case status of
     NeedsUpdate -> forceEnqueueUpdateUser userID
     _ -> pass
@@ -72,7 +75,7 @@ handleUpdateUser UpdateUserJob {userID} = do
   albumArtists <- getSpotifyArtistsOfSavedAlbums creds
 
   -- Create artists.
-  let spotifyArtists = ordNub $ followedArtists ++ trackArtists ++ albumArtists
+  let spotifyArtists = hashNub $ followedArtists ++ trackArtists ++ albumArtists
   artists <- mapM createArtistIfNotExists spotifyArtists
   let artistIDs = map artistID artists
 

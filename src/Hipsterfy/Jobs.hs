@@ -8,6 +8,7 @@ module Hipsterfy.Jobs
   )
 where
 
+import Data.Hashable.Time ()
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Database.PostgreSQL.Simple (Only (..), Query, execute, query)
 import Database.PostgreSQL.Simple.ToField (ToField)
@@ -30,7 +31,9 @@ data UpdateJobInfo = UpdateJobInfo
   { lastUpdateJobSubmitted :: Maybe UTCTime,
     lastUpdateJobCompleted :: Maybe UTCTime
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance Hashable UpdateJobInfo
 
 infoToStatus :: (MonadIO m) => UpdateJobInfo -> m UpdateStatus
 infoToStatus UpdateJobInfo {lastUpdateJobSubmitted, lastUpdateJobCompleted} = do

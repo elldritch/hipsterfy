@@ -62,24 +62,25 @@ library
     Hipsterfy.Spotify.Internal
     Hipsterfy.Trace
     Hipsterfy.User
-    Hipsterfy.User2
 
   build-depends:
-    , aeson                ==1.5.1.0
-    , base64               ==0.4.2
-    , exceptions           ==0.10.4
-    , http-types           ==0.12.3
-    , lens                 ==4.19.2
-    , modern-uri           ==0.3.2.0
-    , monad-parallel       ==0.7.2.3
-    , opaleye              ==0.6.7004.2
-    , product-profunctors  ==0.10.0.1
-    , random-strings       ==0.1.1.0
-    , time                 ==1.9.3
-    , tracing              ==0.0.5.1
-    , unix                 ==2.7.2.2
-    , vector               ==0.12.1.2
-    , wreq                 ==0.5.3.2
+    , aeson                 ==1.5.1.0
+    , base64                ==0.4.2
+    , exceptions            ==0.10.4
+    , hashable-time         ==0.2.0.2
+    , http-types            ==0.12.3
+    , lens                  ==4.19.2
+    , modern-uri            ==0.3.2.0
+    , monad-parallel        ==0.7.2.3
+    , opaleye               ==0.6.7004.2
+    , product-profunctors   ==0.10.0.1
+    , random-strings        ==0.1.1.0
+    , time                  ==1.9.3
+    , tracing               ==0.0.5.1
+    , unix                  ==2.7.2.2
+    , unordered-containers  ==0.2.10.0
+    , vector                ==0.12.1.2
+    , wreq                  ==0.5.3.2
 
 common exe-deps
   build-depends:
@@ -114,23 +115,24 @@ executable hipsterfy
     Hipsterfy.Server.Session
 
   build-depends:
-    , aeson           ==1.5.1.0
-    , blaze-html      ==0.9.1.2
-    , cookie          ==0.4.5
-    , exceptions      ==0.10.4
-    , http-types      ==0.12.3
-    , modern-uri      ==0.3.2.0
-    , monad-control   ==1.0.2.3
-    , random-strings  ==0.1.1.0
-    , scotty          ==0.12
-    , scotty-cookie   ==0.1.0.3
-    , split           ==0.2.3.4
-    , time            ==1.9.3
-    , tracing         ==0.0.5.1
-    , unliftio        ==0.2.13
-    , wai             ==3.2.2.1
-    , wai-extra       ==3.0.29.2
-    , warp            ==3.3.11
+    , aeson                 ==1.5.1.0
+    , blaze-html            ==0.9.1.2
+    , cookie                ==0.4.5
+    , exceptions            ==0.10.4
+    , http-types            ==0.12.3
+    , modern-uri            ==0.3.2.0
+    , monad-control         ==1.0.2.3
+    , random-strings        ==0.1.1.0
+    , scotty                ==0.12
+    , scotty-cookie         ==0.1.0.3
+    , split                 ==0.2.3.4
+    , time                  ==1.9.3
+    , tracing               ==0.0.5.1
+    , unliftio              ==0.2.13
+    , unordered-containers  ==0.2.10.0
+    , wai                   ==3.2.2.1
+    , wai-extra             ==3.0.29.2
+    , warp                  ==3.3.11
 
 executable hipsterfy-worker
   import:         lang

@@ -53,8 +53,8 @@ spotifyCredentialsColumns =
   pSpotifyCredentials
     SpotifyCredentialsT
       { accessToken = required "spotify_access_token",
-        expiration = required "spotify_access_token_expiration",
-        refreshToken = required "spotify_refresh_token"
+        refreshToken = required "spotify_refresh_token",
+        expiration = required "spotify_access_token_expiration"
       }
 
 newtype UserIDT a = UserIDT a

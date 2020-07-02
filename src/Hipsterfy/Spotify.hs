@@ -52,12 +52,16 @@ getSpotifyUser creds = requestSpotifyAPI creds $ spotifyAPIURL <> "/me"
 newtype SpotifyArtistID = SpotifyArtistID Text
   deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON, IsString, ToString, ToField, FromField, DefaultFromField SqlText)
 
+instance Hashable SpotifyArtistID
+
 data SpotifyArtist = SpotifyArtist
   { spotifyArtistID :: SpotifyArtistID,
     spotifyURL :: Text,
     name :: Text
   }
-  deriving (Show)
+  deriving (Show, Generic)
+
+instance Hashable SpotifyArtist
 
 instance Eq SpotifyArtist where
   (==) = (==) `on` spotifyArtistID
@@ -98,7 +102,7 @@ instance FromJSON SpotifyTrack where
 
 getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getSpotifyArtistsOfSavedTracks creds =
-  (return . ordNub . concatMap spotifyTrackArtists) =<< requestSpotifyAPIPages creds (spotifyAPIURL <> "/me/tracks?limit=50")
+  (return . hashNub . concatMap spotifyTrackArtists) =<< requestSpotifyAPIPages creds (spotifyAPIURL <> "/me/tracks?limit=50")
 
 newtype SpotifyAlbum = SpotifyAlbum
   { spotifyAlbumArtists :: [SpotifyArtist]
@@ -112,7 +116,7 @@ instance FromJSON SpotifyAlbum where
 
 getSpotifyArtistsOfSavedAlbums :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getSpotifyArtistsOfSavedAlbums creds =
-  (return . ordNub . concatMap spotifyAlbumArtists) =<< requestSpotifyAPIPages creds (spotifyAPIURL <> "/me/albums?limit=50")
+  (return . hashNub . concatMap spotifyAlbumArtists) =<< requestSpotifyAPIPages creds (spotifyAPIURL <> "/me/albums?limit=50")
 
 -- Loading artist monthly listeners.
 
