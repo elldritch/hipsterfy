@@ -13,11 +13,6 @@ jobs:
     steps:
       - name: Check out commit
         uses: actions/checkout@v2
-      - name: Pull previous images to populate layer cache
-        run: |
-          docker login -u $GITHUB_ACTOR -p ${{ secrets.GITHUB_TOKEN }} docker.pkg.github.com
-          docker pull docker.pkg.github.com/liftm/hipsterfy/hipsterfy-db || true
-          docker pull docker.pkg.github.com/liftm/hipsterfy/hipsterfy-server || true
       - name: Build database image and push to GitHub Package Registry
         uses: docker/build-push-action@v1
         with:
@@ -29,7 +24,6 @@ jobs:
           tag_with_sha: true
           path: .
           dockerfile: ./images/hipsterfy-db/Dockerfile
-          cache_froms: docker.pkg.github.com/liftm/hipsterfy/hipsterfy-db
       - name: Build server image and push to GitHub Package Registry
         uses: docker/build-push-action@v1
         with:
@@ -41,4 +35,3 @@ jobs:
           tag_with_sha: true
           path: .
           dockerfile: ./images/hipsterfy/Dockerfile
-          cache_froms: docker.pkg.github.com/liftm/hipsterfy/hipsterfy-server

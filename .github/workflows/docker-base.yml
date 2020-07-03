@@ -1,0 +1,26 @@
+name: docker-base
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-docker-image:
+    name: Build base Docker image
+    runs-on: ubuntu-18.04
+
+    steps:
+      - name: Check out commit
+        uses: actions/checkout@v2
+      - name: Build base image and push to GitHub Package Registry
+        uses: docker/build-push-action@v1
+        with:
+          registry: docker.pkg.github.com
+          username: liftM
+          password: ${{ secrets.GITHUB_TOKEN }}
+          repository: liftm/hipsterfy/hipsterfy-base
+          tag_with_ref: true
+          tag_with_sha: true
+          path: .
+          dockerfile: ./images/hipsterfy-base/Dockerfile
