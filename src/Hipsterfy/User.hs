@@ -1,8 +1,11 @@
 {-# LANGUAGE Arrows #-}
 
 module Hipsterfy.User
-  ( User (..),
-    UserID,
+  ( UserID,
+    toDatabaseUserID,
+    fromDatabaseUserID,
+    User (..),
+    toUser,
     createOAuthRedirect,
     createUser,
     getUserByID,

@@ -1,23 +1,27 @@
 module Hipsterfy.Database.User
-  ( User,
-    UserT (..),
+  ( UserT (..),
+    User,
     UserReadF,
     UserWriteF,
-    UserID,
     UserIDT (..),
+    UserID,
     UserIDReadF,
-    SpotifyCredentials,
     SpotifyCredentialsT (..),
+    SpotifyCredentials,
     pUserID,
     userTable,
     UserArtistFollowT (..),
     UserArtistFollowF,
     pUserArtistFollow,
     userArtistFollowTable,
-    SpotifyOAuthRequest,
     SpotifyOAuthRequestT (..),
+    SpotifyOAuthRequest,
     SpotifyOAuthRequestF,
     spotifyOAuthRequestTable,
+    UserSessionT (..),
+    UserSession,
+    UserSessionF,
+    userSessionTable,
   )
 where
 
@@ -141,4 +145,24 @@ spotifyOAuthRequestTable =
         { oauth2State = required "oauth2_state"
         }
 
--- TODO: "hipsterfy_user_session" table.
+-- "hipsterfy_user_session" table.
+
+data UserSessionT uid s = UserSessionT
+  { sessionUserID :: uid,
+    cookieSecret :: s
+  }
+
+type UserSession = UserSessionT UserID Text
+
+type UserSessionF = UserSessionT UserIDReadF (Field SqlText)
+
+$(makeAdaptorAndInstance "pUserSession" ''UserSessionT)
+
+userSessionTable :: Table UserSessionF UserSessionF
+userSessionTable =
+  table "hipsterfy_user_session" $
+    pUserSession
+      UserSessionT
+        { sessionUserID = pUserID $ UserIDT $ required "user_id",
+          cookieSecret = required "cookie_secret"
+        }

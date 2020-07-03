@@ -1,3 +1,5 @@
+{-# LANGUAGE Arrows #-}
+
 module Hipsterfy.Session
   ( getSessionByCookieSecret,
     createSession,
@@ -5,70 +7,73 @@ module Hipsterfy.Session
   )
 where
 
-import Database.PostgreSQL.Simple (execute, query)
-import Database.PostgreSQL.Simple.Types (Only (Only))
-import Hipsterfy.Application (Config (..), MonadApp)
-import Hipsterfy.Spotify.Auth (SpotifyCredentials (..))
-import Hipsterfy.User (User (..))
-import Hipsterfy.Jobs (UpdateJobInfo(..))
-import Monitor.Tracing (childSpan)
-import Monitor.Tracing.Zipkin (tag)
+import Control.Arrow (returnA)
+import Hipsterfy.Application (MonadApp)
+import Hipsterfy.Database (QueryParameters, runDelete, runInsert, runSelectOne)
+import Hipsterfy.Database.User (UserReadF, UserSessionT (..), UserT (..), userSessionTable, userTable)
+import Hipsterfy.User (User (..), UserID, toDatabaseUserID, toUser)
+import Opaleye.Manipulation (Delete (..), Insert (..), rCount)
+import Opaleye.Operators ((.==), (.===), restrict)
+import Opaleye.Select (Select)
+import Opaleye.SqlTypes (sqlStrictText)
+import Opaleye.Table (selectTable)
 import Relude
+
+-- Named parameter sets for tracing.
+
+newtype CookieSecretParam = CookieSecretParam {cookieSecret :: Text} deriving (Generic)
+
+instance QueryParameters CookieSecretParam
+
+data UserCookieParam = UserCookieParam
+  { cookieSecret :: Text,
+    userID :: UserID
+  }
+  deriving (Generic)
+
+instance QueryParameters UserCookieParam
+
+-- Operations.
 
 getSessionByCookieSecret :: (MonadApp m) => Text -> m (Maybe User)
 getSessionByCookieSecret cookieSecret = do
-  Config {postgres} <- ask
-  rows <-
-    childSpan "QUERY getSessionByCookieSecret" $ do
-      tag "params.cookieSecret" cookieSecret
-      liftIO $
-        query
-          postgres
-          "SELECT\
-          \ hipsterfy_user.id, friend_code, last_update_job_submitted, last_update_job_completed,\
-          \ spotify_user_id, spotify_user_name, spotify_access_token, spotify_access_token_expiration, spotify_refresh_token\
-          \ FROM hipsterfy_user_session JOIN hipsterfy_user ON hipsterfy_user_session.user_id = hipsterfy_user.id\
-          \ WHERE hipsterfy_user_session.cookie_secret = ?"
-          (Only cookieSecret)
-  return $ case rows of
-    [(userID, friendCode, lastUpdateJobSubmitted, lastUpdateJobCompleted, spotifyUserID, spotifyUserName, accessToken, expiration, refreshToken)] ->
-      Just $
-        User
-          { userID,
-            friendCode,
-            spotifyUserID,
-            spotifyUserName,
-            spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration},
-            updateJobInfo = UpdateJobInfo {lastUpdateJobSubmitted, lastUpdateJobCompleted}
-          }
-    [] -> Nothing
-    _ -> error "impossible: multiple sessions have the same cookie secret"
+  maybeUser <- runSelectOne "getSessionByCookieSecret" makeSelect $ CookieSecretParam cookieSecret
+  return $ toUser <$> maybeUser
+  where
+    makeSelect :: CookieSecretParam -> Select UserReadF
+    makeSelect CookieSecretParam {cookieSecret = paramCS} = proc () -> do
+      UserSessionT {cookieSecret = rowCS, sessionUserID = cookieUID} <- selectTable userSessionTable -< ()
+      users@UserT {userID = userUID} <- selectTable userTable -< ()
+      restrict -< rowCS .== sqlStrictText paramCS
+      restrict -< userUID .=== cookieUID
+      returnA -< users
 
 createSession :: (MonadApp m) => User -> Text -> m ()
-createSession User {userID} cookieSecret = do
-  Config {postgres} <- ask
-  void
-    $ childSpan "QUERY createSession"
-    $ do
-      tag "params.userID" $ show userID
-      tag "params.cookieSecret" cookieSecret
-      liftIO $
-        execute
-          postgres
-          "INSERT INTO hipsterfy_user_session\
-          \ (user_id, cookie_secret, created_at)\
-          \ VALUES (?, ?, NOW())"
-          (userID, cookieSecret)
+createSession User {userID} cookieSecret =
+  void $ runInsert "createSession" makeInsert $ UserCookieParam {userID, cookieSecret}
+  where
+    makeInsert :: UserCookieParam -> Insert Int64
+    makeInsert UserCookieParam {userID = uid, cookieSecret = secret} =
+      Insert
+        { iTable = userSessionTable,
+          iRows =
+            [ UserSessionT
+                { sessionUserID = toDatabaseUserID uid,
+                  cookieSecret = sqlStrictText secret
+                }
+            ],
+          iReturning = rCount,
+          iOnConflict = Nothing
+        }
 
 deleteSession :: (MonadApp m) => Text -> m ()
-deleteSession cookieSecret = do
-  Config {postgres} <- ask
-  void
-    $ childSpan "QUERY deleteSession"
-    $ do
-      tag "params.cookieSecret" cookieSecret
-      liftIO $
-        execute
-          postgres
-          "DELETE FROM hipsterfy_user_session WHERE cookie_secret = ?"
-          (Only cookieSecret)
+deleteSession cookieSecret =
+  void $ runDelete "deleteSession" makeDelete $ CookieSecretParam cookieSecret
+  where
+    makeDelete :: CookieSecretParam -> Delete Int64
+    makeDelete CookieSecretParam {cookieSecret = paramCS} =
+      Delete
+        { dTable = userSessionTable,
+          dWhere = \UserSessionT {cookieSecret = rowCS} -> rowCS .== sqlStrictText paramCS,
+          dReturning = rCount
+        }

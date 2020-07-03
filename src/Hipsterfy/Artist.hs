@@ -22,7 +22,7 @@ import Database.PostgreSQL.Simple.ToField (ToField)
 import Hipsterfy.Application (Config (..), MonadApp)
 import Hipsterfy.Database.Artist (ArtistIDReadF, ArtistIDT (..))
 import qualified Hipsterfy.Database.Artist as D (ArtistID)
-import Hipsterfy.Jobs (UpdateJobInfo(..), UpdateStatus (..), getUpdateStatusRaw, setUpdateCompletedRaw, setUpdateSubmittedRaw)
+import Hipsterfy.Jobs (UpdateJobInfo (..), UpdateStatus (..), getUpdateStatusRaw, setUpdateCompletedRaw, setUpdateSubmittedRaw)
 import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistInsights (..), getSpotifyArtistInsights)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken)
 import Opaleye.SqlTypes (sqlInt4)
@@ -72,7 +72,7 @@ createArtistIfNotExists SpotifyArtist {spotifyArtistID, spotifyURL, name} = do
           { artistID,
             spotifyArtist = SpotifyArtist {spotifyArtistID, spotifyURL, name},
             monthlyListeners = mempty,
-            updateJobInfo = UpdateJobInfo{lastUpdateJobSubmitted = Nothing, lastUpdateJobCompleted = Nothing}
+            updateJobInfo = UpdateJobInfo {lastUpdateJobSubmitted = Nothing, lastUpdateJobCompleted = Nothing}
           }
     [] -> error "createArtistIfNotExists: impossible: insert of single Artist returned 0 rows"
     _ -> error "createArtistIfNotExists: impossible: insert of single Artist returned more than 1 row"
@@ -104,7 +104,7 @@ getArtist artistID = do
           { artistID,
             spotifyArtist = SpotifyArtist {spotifyArtistID, spotifyURL, name},
             monthlyListeners = fromList $ map (first utctDay) listeners,
-            updateJobInfo = UpdateJobInfo{lastUpdateJobSubmitted, lastUpdateJobCompleted}
+            updateJobInfo = UpdateJobInfo {lastUpdateJobSubmitted, lastUpdateJobCompleted}
           }
     [] -> Nothing
     _ -> error $ "getArtist: impossible: selected multiple Artists with id " <> show artistID

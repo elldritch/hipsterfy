@@ -10,6 +10,7 @@ module Hipsterfy.Server
 where
 
 import Hipsterfy.Application (MonadApp)
+import Hipsterfy.Jobs (infoToStatus)
 import Hipsterfy.Jobs.UpdateUser (enqueueUpdateUser, forceEnqueueUpdateUser)
 import Hipsterfy.Server.Handlers (get, post)
 import Hipsterfy.Server.Pages (accountPage, comparePage, loginPage)
@@ -19,7 +20,6 @@ import Hipsterfy.User (User (..), createOAuthRedirect, createUser, getFollowedAr
 import Network.HTTP.Types (status200)
 import Relude hiding (get)
 import Web.Scotty.Trans (ScottyError, ScottyT, html, next, param, redirect, status)
-import Hipsterfy.Jobs (infoToStatus)
 
 -- Home page. Check cookies to see if logged in.
 -- If not logged in, prompt to authorize.
