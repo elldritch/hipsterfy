@@ -98,7 +98,7 @@ instance FromJSON SpotifyTrack where
   parseJSON = withObject "track item" $ \item -> do
     track <- item .: "track"
     spotifyTrackArtists <- withObject "track" (\t -> (t .: "artists") >>= parseJSON) track
-    return SpotifyTrack {spotifyTrackArtists}
+    return SpotifyTrack {..}
 
 getSpotifyArtistsOfSavedTracks :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getSpotifyArtistsOfSavedTracks creds =
@@ -112,7 +112,7 @@ instance FromJSON SpotifyAlbum where
   parseJSON = withObject "album item" $ \item -> do
     album <- item .: "album"
     spotifyAlbumArtists <- withObject "album" (\t -> (t .: "artists") >>= parseJSON) album
-    return SpotifyAlbum {spotifyAlbumArtists}
+    return SpotifyAlbum {..}
 
 getSpotifyArtistsOfSavedAlbums :: (MonadIO m) => SpotifyCredentials -> m [SpotifyArtist]
 getSpotifyArtistsOfSavedAlbums creds =

@@ -28,7 +28,7 @@ instance ToJSON UpdateArtistJob
 
 enqueueUpdateArtist :: (MonadApp m) => ArtistID -> m ()
 enqueueUpdateArtist artistID = do
-  Config {faktory = Faktory {client}} <- ask
+  Config {faktory = Faktory {..}} <- ask
   maybeArtist <- getArtistByID artistID
   Artist {updateJobInfo} <- case maybeArtist of
     Just artist -> return artist
@@ -41,7 +41,7 @@ enqueueUpdateArtist artistID = do
     _ -> pass
 
 handleUpdateArtist :: (MonadApp m) => UpdateArtistJob -> m ()
-handleUpdateArtist UpdateArtistJob {artistID} = do
+handleUpdateArtist UpdateArtistJob {..} = do
   maybeArtist <- getArtistByID artistID
   artist <- case maybeArtist of
     Just a -> return a

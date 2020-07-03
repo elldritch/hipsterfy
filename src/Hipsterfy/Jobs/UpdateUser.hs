@@ -56,12 +56,12 @@ enqueueUpdateUser userID = do
 
 forceEnqueueUpdateUser :: (MonadApp m) => UserID -> m ()
 forceEnqueueUpdateUser userID = do
-  Config {faktory = Faktory {client}} <- ask
+  Config {faktory = Faktory {..}} <- ask
   setUpdateSubmitted userID
-  void $ liftIO $ perform (queue updateUserQueue) client UpdateUserJob {userID}
+  void $ liftIO $ perform (queue updateUserQueue) client UpdateUserJob {..}
 
 handleUpdateUser :: (MonadApp m, MonadParallel m) => UpdateUserJob -> m ()
-handleUpdateUser UpdateUserJob {userID} = do
+handleUpdateUser UpdateUserJob {..} = do
   -- Get user.
   maybeUser <- getUserByID userID
   User {spotifyCredentials} <- case maybeUser of
@@ -70,6 +70,9 @@ handleUpdateUser UpdateUserJob {userID} = do
 
   -- Get artists.
   creds <- refreshCredentialsIfNeeded userID spotifyCredentials
+  -- TODO: how do we make this streaming? As soon as new artists come in, we
+  -- want to immediately insert and enqueue their update jobs, rather than waiting
+  -- for the whole batch to finish.
   followedArtists <- getFollowedSpotifyArtists creds
   trackArtists <- getSpotifyArtistsOfSavedTracks creds
   albumArtists <- getSpotifyArtistsOfSavedAlbums creds

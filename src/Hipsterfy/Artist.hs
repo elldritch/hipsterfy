@@ -30,7 +30,6 @@ import Hipsterfy.Database (QueryParameters, runInsert, runInsertOne, runSelectOn
 import Hipsterfy.Database.Artist
   ( ArtistIDReadF,
     ArtistIDT (..),
-    ArtistListenersReadF,
     ArtistListenersT (..),
     ArtistReadF,
     ArtistT (..),
@@ -45,8 +44,10 @@ import Hipsterfy.Database.Jobs (UpdateJobInfoF, UpdateJobInfoT (..), pUpdateJobI
 import Hipsterfy.Jobs (UpdateJobInfo (..))
 import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyArtistID (..), SpotifyArtistInsights (..), getSpotifyArtistInsights)
 import Hipsterfy.Spotify.Auth (AnonymousBearerToken)
+import Opaleye (Nullable)
 import Opaleye.Aggregate (aggregate, arrayAgg, groupBy)
-import Opaleye.Field (Field, null, toNullable)
+import Opaleye.Field (Field, FieldNullable, null, toNullable)
+import Opaleye.Join (leftJoin)
 import Opaleye.Manipulation (Insert (..), Update (..), rCount, rReturning, updateEasy)
 import Opaleye.Operators ((.===), restrict)
 import Opaleye.Select (Select, SelectArr)
@@ -79,7 +80,14 @@ fromDatabaseArtistID (ArtistIDT i) = ArtistID i
 
 -- Named parameter sets for tracing.
 
-instance QueryParameters Artist
+data CreateArtistParams = CreateArtistParams
+  { name :: Text,
+    spotifyArtistID :: SpotifyArtistID,
+    spotifyURL :: Text
+  }
+  deriving (Generic)
+
+instance QueryParameters CreateArtistParams
 
 newtype ArtistIDParam = ArtistIDParam {artistID :: ArtistID} deriving (Generic)
 
@@ -116,87 +124,74 @@ instance QueryParameters ArtistListenersParam
 -- Creation.
 
 createArtist :: (MonadApp m) => SpotifyArtist -> m Artist
-createArtist SpotifyArtist {spotifyArtistID, spotifyURL, name} = do
+createArtist SpotifyArtist {..} = do
   runTransaction $ do
     -- Construct an artist if one doesn't already exist.
     maybeArtist <- getArtistBySpotifyID spotifyArtistID
     case maybeArtist of
       Just artist -> return artist
       Nothing -> do
-        let artist =
-              Artist
-                { artistID = error "createArtist: impossible: artistID not used during insertion",
-                  spotifyArtist =
-                    SpotifyArtist
-                      { spotifyArtistID,
-                        spotifyURL,
-                        name
-                      },
-                  updateJobInfo =
-                    UpdateJobInfo
-                      { lastUpdateJobSubmitted = Nothing,
-                        lastUpdateJobCompleted = Nothing
-                      },
-                  monthlyListeners = mempty
-                }
-        aid <- runInsertOne "insertArtist" insertArtist artist
-        return (artist {artistID = fromDatabaseArtistID aid} :: Artist)
-  where
-    insertArtist :: Artist -> Insert [D.ArtistID]
-    insertArtist Artist {..} =
-      let SpotifyArtist {spotifyURL = su, name = n, spotifyArtistID = SpotifyArtistID saID} = spotifyArtist
-       in Insert
-            { iTable = artistTable,
-              iRows =
-                [ ArtistT
-                    { artistID = ArtistIDT Nothing,
-                      name = sqlStrictText n,
-                      spotifyArtistID = sqlStrictText saID,
-                      spotifyURL = sqlStrictText su,
-                      updateJobInfo =
-                        UpdateJobInfoT
-                          { lastUpdateJobSubmitted = null,
-                            lastUpdateJobCompleted = null
-                          }
-                    }
-                ],
-              iReturning = rReturning (\ArtistT {artistID = aid} -> aid),
-              iOnConflict = Nothing
+        aid <- runInsertOne "insertArtist" insertArtist CreateArtistParams {..}
+        return
+          Artist
+            { artistID = fromDatabaseArtistID aid,
+              spotifyArtist = SpotifyArtist {..},
+              updateJobInfo =
+                UpdateJobInfo
+                  { lastUpdateJobSubmitted = Nothing,
+                    lastUpdateJobCompleted = Nothing
+                  },
+              monthlyListeners = mempty
             }
+  where
+    insertArtist :: CreateArtistParams -> Insert [D.ArtistID]
+    insertArtist CreateArtistParams {spotifyURL = su, name = n, spotifyArtistID = SpotifyArtistID saID} =
+      Insert
+        { iTable = artistTable,
+          iRows =
+            [ ArtistT
+                { artistID = ArtistIDT Nothing,
+                  name = sqlStrictText n,
+                  spotifyArtistID = sqlStrictText saID,
+                  spotifyURL = sqlStrictText su,
+                  updateJobInfo =
+                    UpdateJobInfoT
+                      { lastUpdateJobSubmitted = null,
+                        lastUpdateJobCompleted = null
+                      }
+                }
+            ],
+          iReturning = rReturning (\ArtistT {artistID = aid} -> aid),
+          iOnConflict = Nothing
+        }
 
 -- Retrieval.
 
 type ArtistListenersAggF =
   ArtistListenersT
-    (ArtistIDT (Field (SqlArray SqlInt4)))
-    (Field (SqlArray SqlTimestamptz))
-    (Field (SqlArray SqlInt4))
+    (ArtistIDT (Field (SqlArray (Nullable SqlInt4))))
+    (Field (SqlArray (Nullable SqlTimestamptz)))
+    (Field (SqlArray (Nullable SqlInt4)))
 
-type ArtistListenersAgg = ArtistListenersT (ArtistIDT [Int]) [UTCTime] [Int]
+type ArtistListenersAgg = ArtistListenersT (ArtistIDT [Maybe Int]) [Maybe UTCTime] [Maybe Int]
 
-toArtist :: (D.Artist, ArtistListenersAgg) -> Artist
-toArtist (ArtistT {..}, ArtistListenersT {..}) =
-  let UpdateJobInfoT {..} = updateJobInfo
-   in Artist
-        { artistID = fromDatabaseArtistID artistID,
-          spotifyArtist = SpotifyArtist {spotifyArtistID, spotifyURL, name},
-          updateJobInfo = UpdateJobInfo {lastUpdateJobCompleted, lastUpdateJobSubmitted},
-          monthlyListeners = HashMap.fromList $ zip (utctDay <$> createdAt) monthlyListeners
-        }
+type NullableArtistIDF = ArtistIDT (FieldNullable SqlInt4)
+
+type NullableArtistListenersF = ArtistListenersT NullableArtistIDF (FieldNullable SqlTimestamptz) (FieldNullable SqlInt4)
 
 getArtistsBy :: SelectArr ArtistReadF () -> Select (ArtistReadF, ArtistListenersAggF)
 getArtistsBy artistArr = aggregateArtistListeners getArtistsAndListeners
   where
-    getArtistsAndListeners :: Select (ArtistReadF, ArtistListenersReadF)
+    getArtistsAndListeners :: Select (ArtistReadF, NullableArtistListenersF)
     getArtistsAndListeners = proc () -> do
-      artist@ArtistT {artistID = rowAID} <- selectTable artistTable -< ()
-      listeners@ArtistListenersT {listenersArtistID = listenerAID} <- selectTable artistListenersTable -< ()
-
-      restrict -< rowAID .=== listenerAID
+      (artist, listeners) <- artistsWithAnyListeners -< ()
       artistArr -< artist
-
       returnA -< (artist, listeners)
-    aggregateArtistListeners :: Select (ArtistReadF, ArtistListenersReadF) -> Select (ArtistReadF, ArtistListenersAggF)
+      where
+        artistsWithAnyListeners :: Select (ArtistReadF, NullableArtistListenersF)
+        artistsWithAnyListeners = leftJoin (selectTable artistTable) (selectTable artistListenersTable) $
+          \(ArtistT {..}, ArtistListenersT {..}) -> artistID .=== listenersArtistID
+    aggregateArtistListeners :: Select (ArtistReadF, NullableArtistListenersF) -> Select (ArtistReadF, ArtistListenersAggF)
     aggregateArtistListeners =
       aggregate
         ( p2
@@ -221,6 +216,23 @@ getArtistsBy artistArr = aggregateArtistListeners getArtistsAndListeners
                   }
             )
         )
+
+toArtist :: (D.Artist, ArtistListenersAgg) -> Artist
+toArtist (ArtistT {..}, ArtistListenersT {..}) =
+  let UpdateJobInfoT {..} = updateJobInfo
+   in Artist
+        { artistID = fromDatabaseArtistID artistID,
+          spotifyArtist = SpotifyArtist {..},
+          updateJobInfo = UpdateJobInfo {..},
+          monthlyListeners = HashMap.fromList $ zipMaybes (utctDay <<$>> createdAt) monthlyListeners
+        }
+  where
+    zipMaybes :: [Maybe a] -> [Maybe b] -> [(a, b)]
+    zipMaybes (Just x : xs) (Just y : ys) = (x, y) : zipMaybes xs ys
+    zipMaybes (Nothing : xs) (_ : ys) = zipMaybes xs ys
+    zipMaybes (_ : xs) (Nothing : ys) = zipMaybes xs ys
+    zipMaybes _ [] = []
+    zipMaybes [] _ = []
 
 getArtistByID :: (MonadApp m) => ArtistID -> m (Maybe Artist)
 getArtistByID artistID = do
@@ -248,7 +260,7 @@ refreshArtistInsightsTimeoutDays :: (Integral n) => n
 refreshArtistInsightsTimeoutDays = 15
 
 refreshArtistInsights :: (MonadApp m) => AnonymousBearerToken -> Artist -> m Artist
-refreshArtistInsights bearerToken artist@Artist {artistID, spotifyArtist = SpotifyArtist {spotifyArtistID}, monthlyListeners} = do
+refreshArtistInsights bearerToken artist@Artist {spotifyArtist = SpotifyArtist {spotifyArtistID}, ..} = do
   now <- liftIO getCurrentTime
   let today = utctDay now
   maybeNewSample <- case viaNonEmpty head $ reverse $ sort $ HashMap.toList monthlyListeners of
@@ -266,10 +278,10 @@ refreshArtistInsights bearerToken artist@Artist {artistID, spotifyArtist = Spoti
     updateInsights = do
       SpotifyArtistInsights {monthlyListeners = listeners} <-
         liftIO $ getSpotifyArtistInsights bearerToken spotifyArtistID
-      void $ runInsert "refreshArtistInsights" makeInsert $ ArtistListenersParam {artistID, listeners}
+      void $ runInsert "refreshArtistInsights" makeInsert $ ArtistListenersParam {..}
       return listeners
     makeInsert :: ArtistListenersParam -> Insert Int64
-    makeInsert ArtistListenersParam {artistID = artistID', listeners} =
+    makeInsert ArtistListenersParam {artistID = artistID', ..} =
       Insert
         { iTable = artistListenersTable,
           iRows =
@@ -288,10 +300,10 @@ refreshArtistInsights bearerToken artist@Artist {artistID, spotifyArtist = Spoti
 setUpdateSubmitted :: (MonadApp m) => ArtistID -> m ()
 setUpdateSubmitted artistID = do
   now <- liftIO getCurrentTime
-  void $ runUpdate "artistUpdateJobSubmitted" makeUpdate $ JobSubmittedParam {artistID, jobSubmitted = now}
+  void $ runUpdate "artistUpdateJobSubmitted" makeUpdate $ JobSubmittedParam {jobSubmitted = now, ..}
   where
     makeUpdate :: JobSubmittedParam -> Update Int64
-    makeUpdate JobSubmittedParam {artistID = paramUID, jobSubmitted} =
+    makeUpdate JobSubmittedParam {artistID = paramUID, ..} =
       Update
         { uTable = artistTable,
           uUpdateWith = updateEasy $
@@ -304,10 +316,10 @@ setUpdateSubmitted artistID = do
 setUpdateCompleted :: (MonadApp m) => ArtistID -> m ()
 setUpdateCompleted artistID = do
   now <- liftIO getCurrentTime
-  void $ runUpdate "artistUpdateJobCompleted" makeUpdate $ JobCompletedParam {artistID, jobCompleted = now}
+  void $ runUpdate "artistUpdateJobCompleted" makeUpdate $ JobCompletedParam {jobCompleted = now, ..}
   where
     makeUpdate :: JobCompletedParam -> Update Int64
-    makeUpdate JobCompletedParam {artistID = paramUID, jobCompleted} =
+    makeUpdate JobCompletedParam {artistID = paramUID, ..} =
       Update
         { uTable = artistTable,
           uUpdateWith = updateEasy $

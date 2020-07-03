@@ -69,22 +69,36 @@ After the job queue container has been created, you can start it with:
 sudo docker start hipsterfy-jobqueue
 ```
 
+#### Run the tracing backend
+
+Hipsterfy publishes traces to any [Zipkin](https://zipkin.io/)-compatible tracing backend.
+
+As an example, here's how to run the [Jaeger](https://www.jaegertracing.io/docs/1.18/getting-started/#migrating-from-zipkin) backend:
+
+```bash
+sudo docker run --name hipsterfy-jaeger \
+  -p 9411:9411 \
+  -p 16686:16686 \
+  -e COLLECTOR_ZIPKIN_HTTP_PORT=9411 \
+  jaegertracing/all-in-one:1.18
+```
+
 #### Build and run the web server
 
 Make sure to populate the flags with your own:
 
-- Server host and port. (Make sure this is the same as your redirect URI in Spotify, including protocol! Otherwise, Spotify will refuse to redirect authorizing users, or will redirect incorrectly.)
-- Spotify app client ID and secret.
+- Server port.
+- Spotify app client ID, secret, and redirect URI. (Make sure your configured redirect URI is the same as the redirect URI in Spotify, including protocol and port! Otherwise, Spotify will refuse to redirect authorizing users, or will redirect incorrectly.)
 - Postgres database connection string.
 - Faktory host, port, and password.
 
 ```bash
 cabal run hipsterfy -- \
-  --host http://localhost \
   --port 8000 \
-  --client_id XXXX \
-  --client_secret XXXX \
   --db 'postgresql://hipsterfy:hunter2@localhost:5432' \
+  --spotify_client_id XXXX \
+  --spotify_client_secret XXXX \
+  --spotify_redirect_uri http://localhost:8000/authorize/callback \
   --faktory_host localhost \
   --faktory_port 7419 \
   --faktory_password hunter2
@@ -100,9 +114,9 @@ Make sure to populate the flags with your own:
 
 ```bash
 cabal run hipsterfy-worker -- \
-  --client_id ea880280c7cc4427912e0ef932a57b68 \
-  --client_secret 93206bec68d940e791f7d1cf26eeedc5 \
   --db 'postgresql://hipsterfy:hunter2@localhost:5432' \
+  --spotify_client_id ea880280c7cc4427912e0ef932a57b68 \
+  --spotify_client_secret 93206bec68d940e791f7d1cf26eeedc5 \
   --faktory_host localhost \
   --faktory_port 7419 \
   --faktory_password hunter2
@@ -110,13 +124,21 @@ cabal run hipsterfy-worker -- \
 
 ### Running with `docker-compose`
 
+#### Building the base image
+
+```
+sudo docker build -f ./images/hipsterfy-base/Dockerfile -t hipsterfy-base .
+```
+
+#### Starting the containers
+
 Docker Compose will start all containers for you. Make sure to set environment variables for configuration.
 
 ```bash
-export HIPSTERFY_ADDR_HOST=http://localhost
 export HIPSTERFY_ADDR_PORT=8000
 export HIPSTERFY_SPOTIFY_CLIENT_ID=XXXX
 export HIPSTERFY_SPOTIFY_CLIENT_SECRET=XXXX
+export HIPSTERFY_SPOTIFY_REDIRECT_URI=http://localhost:8000/authorize/callback
 export HIPSTERFY_DB_USER=hipsterfy
 export HIPSTERFY_DB_PASSWORD=hunter2
 export HIPSTERFY_JOBQUEUE_PASSWORD=hunter2

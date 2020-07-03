@@ -5,12 +5,10 @@ import Hipsterfy.Application
   ( Config (..),
     MonadApp,
     makeFaktory,
-    makeHTTPURI,
     makePostgres,
     makeZipkin,
     runApp,
     runAsContainer,
-    withPathPiece,
   )
 import Hipsterfy.Server
   ( handleCompare,
@@ -38,15 +36,14 @@ import Options.Applicative
     strOption,
   )
 import Relude hiding (trace)
-import Text.URI (URI (..), render, renderStr)
 import Web.Scotty.Trans (ScottyError, ScottyT, middleware, scottyAppT)
 
 data Options = Options
-  { host :: Text,
-    port :: Int,
+  { port :: Int,
+    pgConn :: Text,
     clientID :: Text,
     clientSecret :: Text,
-    pgConn :: Text,
+    redirectURI :: Text,
     faktoryHost :: Text,
     faktoryPort :: Int,
     faktoryPassword :: Text,
@@ -65,11 +62,11 @@ opts =
   where
     options =
       Options
-        <$> strOption (long "host")
-        <*> option auto (long "port")
-        <*> strOption (long "client_id")
-        <*> strOption (long "client_secret")
+        <$> option auto (long "port")
         <*> strOption (long "db")
+        <*> strOption (long "spotify_client_id")
+        <*> strOption (long "spotify_client_secret")
+        <*> strOption (long "spotify_redirect_uri")
         <*> strOption (long "faktory_host")
         <*> option auto (long "faktory_port")
         <*> strOption (long "faktory_password")
@@ -85,14 +82,12 @@ runServerM Options {..} app = do
   postgres <- makePostgres pgConn
   faktory <- makeFaktory faktoryHost faktoryPassword faktoryPort
   zipkin <- makeZipkin zipkinHost zipkinPort
-  address <- makeHTTPURI host port
-  redirectURI <- address `withPathPiece` "authorize" >>= (`withPathPiece` "callback")
 
-  let spotifyApp = SpotifyApp {clientID, clientSecret, redirectURI = render redirectURI}
-  let config = Config {postgres, faktory, zipkin, address, spotifyApp}
+  let spotifyApp = SpotifyApp {..}
+  let config = Config {..}
 
   wai <- scottyAppT (runApp config) (app healthSecret)
-  putStrLn $ "Starting server at: " <> renderStr redirectURI {uriPath = Nothing}
+  putStrLn $ "Starting server, listening to port " <> show port
   runSettings warpSettings wai
   where
     warpSettings = Warp.defaultSettings & setPort port

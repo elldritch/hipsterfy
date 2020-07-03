@@ -30,7 +30,7 @@ data UpdateJobInfo = UpdateJobInfo
 instance Hashable UpdateJobInfo
 
 infoToStatus :: (MonadIO m) => UpdateJobInfo -> m UpdateStatus
-infoToStatus UpdateJobInfo {lastUpdateJobSubmitted, lastUpdateJobCompleted} = do
+infoToStatus UpdateJobInfo {..} = do
   now <- liftIO getCurrentTime
   return $ case lastUpdateJobSubmitted of
     Just submitted ->

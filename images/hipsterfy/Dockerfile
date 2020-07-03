@@ -1,18 +1,5 @@
 # Build application.
-FROM haskell:8.8.3-buster AS builder
-
-# Update dependency indexes.
-RUN apt-get update
-RUN cabal update
-
-# Install system dependencies.
-RUN apt-get install -y libpq-dev upx-ucl
-
-# Install application dependencies.
-# This is a separate step to improve caching.
-WORKDIR /build
-COPY *.cabal cabal.project /build/
-RUN cabal build --dependencies-only
+FROM hipsterfy-base AS builder
 
 # Build the application.
 RUN mkdir -p /artifacts

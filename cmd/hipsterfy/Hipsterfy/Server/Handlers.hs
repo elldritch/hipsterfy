@@ -44,9 +44,9 @@ handleRoute method routePattern action =
       tag "http.route" routePattern
       tag "http.verb" (show method)
       hs <- headers
-      lift $ tagPairs "http.headers." $ bimapF toText toText hs
+      tagPairs "http.headers." $ bimapF toText toText hs
       ps <- params
-      lift $ tagPairs "http.params." $ bimapF toText toText ps
+      tagPairs "http.params." $ bimapF toText toText ps
       tag "service.name" "hipsterfy-server"
       -- TODO: how do we make this work for exceptions in general? I can't fit `catch` into here
       action `rescue` tagError
@@ -64,4 +64,4 @@ getStatus :: (Monad m) => ActionT e m Status
 getStatus = ActionT $ srStatus <$> R.get
 
 tagUser :: (MonadTrace m) => User -> m ()
-tagUser User {userID} = tag "user" $ show userID
+tagUser User {..} = tag "user" $ show userID

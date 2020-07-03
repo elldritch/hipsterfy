@@ -84,11 +84,9 @@ toUser UserT {..} =
       UpdateJobInfoT {..} = updateJobInfo
    in User
         { userID = fromDatabaseUserID userID,
-          friendCode,
-          spotifyUserID,
-          spotifyUserName,
-          spotifyCredentials = SpotifyCredentials {accessToken, refreshToken, expiration},
-          updateJobInfo = UpdateJobInfo {lastUpdateJobSubmitted, lastUpdateJobCompleted}
+          spotifyCredentials = SpotifyCredentials {..},
+          updateJobInfo = UpdateJobInfo {..},
+          ..
         }
 
 toDatabaseUserID :: UserID -> UserIDReadF
@@ -99,7 +97,15 @@ fromDatabaseUserID (UserIDT i) = UserID i
 
 -- Named parameter sets for tracing.
 
-instance QueryParameters User
+data CreateUserParams = CreateUserParams
+  { friendCode :: Text,
+    spotifyUserID :: SpotifyUserID,
+    spotifyUserName :: Text,
+    spotifyCredentials :: SpotifyCredentials
+  }
+  deriving (Generic)
+
+instance QueryParameters CreateUserParams
 
 newtype UserIDParam = UserIDParam {userID :: UserID} deriving (Generic)
 
@@ -145,7 +151,7 @@ instance QueryParameters JobCompletedParam
 
 createOAuthRedirect :: (MonadApp m) => [Scope] -> m LText
 createOAuthRedirect scopes = do
-  Config {spotifyApp} <- ask
+  Config {..} <- ask
   oauth2State <- liftIO $ toText <$> randomWord randomASCII 20
   void $ runInsert "insertOAuth2Request" makeInsert $ OAuth2StateParam oauth2State
   return $ authorizationURL spotifyApp scopes oauth2State
@@ -162,7 +168,7 @@ createOAuthRedirect scopes = do
 createUser :: (MonadApp m) => Text -> Text -> m User
 createUser authCode oauth2State = do
   runTransaction $ do
-    Config {spotifyApp} <- ask
+    Config {..} <- ask
     -- Validate the OAuth state, then delete that OAuth request.
     maybeReq :: Maybe SpotifyOAuthRequest <- runSelectOne "getOAuthRequest" getOAuthRequest $ OAuth2StateParam oauth2State
     spotifyCredentials <- case maybeReq of
@@ -172,7 +178,7 @@ createUser authCode oauth2State = do
       Nothing -> error "createUser: invalid OAuth request state"
 
     -- Exchange OAuth authorization code for credentials.
-    SpotifyUser {spotifyUserID, spotifyUserName} <- liftIO $ getSpotifyUser spotifyCredentials
+    SpotifyUser {..} <- liftIO $ getSpotifyUser spotifyCredentials
 
     -- Construct a user if one doesn't already exist.
     maybeUser <- getUserBySpotifyID spotifyUserID
@@ -180,21 +186,10 @@ createUser authCode oauth2State = do
       Just user -> return user
       Nothing -> do
         friendCode <- liftIO $ toText <$> randomWord randomASCII 20
-        let user =
-              User
-                { userID = error "createUser: impossible: userID not used during insertion",
-                  friendCode,
-                  spotifyUserID,
-                  spotifyUserName,
-                  spotifyCredentials,
-                  updateJobInfo =
-                    UpdateJobInfo
-                      { lastUpdateJobSubmitted = Nothing,
-                        lastUpdateJobCompleted = Nothing
-                      }
-                }
-        uid <- runInsertOne "insertUser" insertUser user
-        return (user {userID = fromDatabaseUserID uid} :: User)
+        let updateJobInfo = UpdateJobInfo {lastUpdateJobSubmitted = Nothing, lastUpdateJobCompleted = Nothing}
+        uid <- runInsertOne "insertUser" insertUser $ CreateUserParams {..}
+        let userID = fromDatabaseUserID uid
+        return User {..}
   where
     getOAuthRequest :: OAuth2StateParam -> Select SpotifyOAuthRequestF
     getOAuthRequest (OAuth2StateParam paramState) = proc () -> do
@@ -208,8 +203,8 @@ createUser authCode oauth2State = do
           dWhere = \SpotifyOAuthRequestT {oauth2State = rowState} -> rowState .== sqlStrictText paramState,
           dReturning = rCount
         }
-    insertUser :: User -> Insert [D.UserID]
-    insertUser User {..} =
+    insertUser :: CreateUserParams -> Insert [D.UserID]
+    insertUser CreateUserParams {..} =
       let SpotifyCredentials {..} = spotifyCredentials
           (SpotifyUserID suid) = spotifyUserID
        in Insert
@@ -277,7 +272,7 @@ getUserByFriendCode friendCode = do
 
 refreshCredentialsIfNeeded :: (MonadApp m) => UserID -> SpotifyCredentials -> m SpotifyCredentials
 refreshCredentialsIfNeeded userID creds@SpotifyCredentials {expiration} = do
-  Config {spotifyApp} <- ask
+  Config {..} <- ask
   now <- liftIO getCurrentTime
   if now > expiration
     then do
@@ -289,7 +284,7 @@ refreshCredentialsIfNeeded userID creds@SpotifyCredentials {expiration} = do
     updateCreds :: (MonadApp m) => SpotifyCredentials -> m ()
     updateCreds refreshedCreds = void $ runUpdate "updateCreds" makeUpdate refreshedCreds
     makeUpdate :: SpotifyCredentials -> Update Int64
-    makeUpdate SpotifyCredentials {accessToken, refreshToken, expiration = e} =
+    makeUpdate SpotifyCredentials {expiration = e, ..} =
       Update
         { uTable = userTable,
           uUpdateWith = updateEasy $
@@ -319,7 +314,7 @@ getFollowedArtists userID = do
     makeSelect (UserIDParam paramUID) =
       getArtistsBy $ proc ArtistT {artistID = rowAID} -> do
         UserT {userID = rowUID} <- selectTable userTable -< ()
-        UserArtistFollowT {followUserID, followArtistID} <- selectTable userArtistFollowTable -< ()
+        UserArtistFollowT {..} <- selectTable userArtistFollowTable -< ()
         restrict -< rowUID .=== toDatabaseUserID paramUID
         restrict -< rowUID .=== followUserID
         restrict -< rowAID .=== followArtistID
@@ -359,10 +354,10 @@ setFollowedArtists userID artistIDs = do
 setUpdateSubmitted :: (MonadApp m) => UserID -> m ()
 setUpdateSubmitted userID = do
   now <- liftIO getCurrentTime
-  void $ runUpdate "userUpdateJobSubmitted" makeUpdate $ JobSubmittedParam {userID, jobSubmitted = now}
+  void $ runUpdate "userUpdateJobSubmitted" makeUpdate $ JobSubmittedParam {jobSubmitted = now, ..}
   where
     makeUpdate :: JobSubmittedParam -> Update Int64
-    makeUpdate JobSubmittedParam {userID = paramUID, jobSubmitted} =
+    makeUpdate JobSubmittedParam {userID = paramUID, ..} =
       Update
         { uTable = userTable,
           uUpdateWith = updateEasy $
@@ -375,10 +370,10 @@ setUpdateSubmitted userID = do
 setUpdateCompleted :: (MonadApp m) => UserID -> m ()
 setUpdateCompleted userID = do
   now <- liftIO getCurrentTime
-  void $ runUpdate "userUpdateJobCompleted" makeUpdate $ JobCompletedParam {userID, jobCompleted = now}
+  void $ runUpdate "userUpdateJobCompleted" makeUpdate $ JobCompletedParam {jobCompleted = now, ..}
   where
     makeUpdate :: JobCompletedParam -> Update Int64
-    makeUpdate JobCompletedParam {userID = paramUID, jobCompleted} =
+    makeUpdate JobCompletedParam {userID = paramUID, ..} =
       Update
         { uTable = userTable,
           uUpdateWith = updateEasy $

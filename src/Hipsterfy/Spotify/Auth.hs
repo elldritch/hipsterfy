@@ -154,7 +154,7 @@ requestAccessTokenFromAuthorizationCode app code = do
     SpotifyCredentials
       { accessToken = access_token creds,
         refreshToken = fromJust $ refresh_token creds,
-        expiration
+        ..
       }
 
 -- | @requestAccessTokenFromAuthorizationCode@ refreshes a user's access token
@@ -181,12 +181,7 @@ requestAccessTokenFromRefreshToken app SpotifyCredentials {refreshToken} = do
         "refresh_token" := refreshToken
       ]
   expiration <- expirationToDeadline $ expires_in refreshedCreds
-  return $
-    SpotifyCredentials
-      { accessToken = access_token refreshedCreds,
-        refreshToken,
-        expiration
-      }
+  return $ SpotifyCredentials {accessToken = access_token refreshedCreds, ..}
 
 -- | expirationToDeadline converts an integer expiration (in seconds) to a
 -- deadline by adding it to the current time.
@@ -197,7 +192,7 @@ expirationToDeadline expiration = do
 
 -- | requestAccessToken makes requests for API tokens.
 requestAccessToken :: (MonadIO m) => SpotifyApp -> [FormParam] -> m SpotifyTokenResponse
-requestAccessToken SpotifyApp {clientID, clientSecret} params =
+requestAccessToken SpotifyApp {..} params =
   requestAsJSON $
     postWith
       (defaults & header "Authorization" .~ ["Basic " <> encodeUtf8 secret])

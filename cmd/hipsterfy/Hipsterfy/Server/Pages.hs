@@ -28,8 +28,10 @@ render body = renderHtml $ docTypeHtml $ do
       div ! A.class_ "mx-auto max-w-lg" $ do
         body
     footer ! A.class_ "text-center text-sm pb-12"
-      $ p
-      $ externalHref "https://github.com/liftM/hipsterfy" "About"
+      $ p $ do
+        "Hipsterfy is "
+        externalHref "https://github.com/liftM/hipsterfy" "open source"
+        "."
 
 container :: Html -> LText
 container contents = render $ do
@@ -49,7 +51,7 @@ loginPage = render $ do
         $ "Sign in with Spotify"
 
 accountPage :: User -> UpdateStatus -> [Artist] -> LText
-accountPage User {spotifyUserName, friendCode, updateJobInfo = UpdateJobInfo {lastUpdateJobCompleted}} status artists = container $ do
+accountPage User {updateJobInfo = UpdateJobInfo {..}, ..} status artists = container $ do
   p $
     "Logged in as "
       <> toHtml spotifyUserName
@@ -59,9 +61,9 @@ accountPage User {spotifyUserName, friendCode, updateJobInfo = UpdateJobInfo {la
   form ! A.action "/compare" ! A.method "POST" $ do
     br
     label ! A.class_ "block text-sm font-medium text-gray-700" $ "Friend code:"
-    div ! A.class_ "mt-1 relative rounded-md shadow-sm" $
+    div ! A.class_ "mt-1 mb-2 relative rounded-md shadow-sm" $
       input ! A.class_ "form-input block w-full" ! A.type_ "text" ! A.name "friend-code"
-    p ! A.class_ "mt-2 text-sm text-gray-500" $ "Enter a friend code to see mutually followed artists."
+    greyed "Enter a friend code to see mutually followed artists."
     div ! A.class_ "mt-5"
       $ span ! A.class_ "inline-flex rounded-md shadow-sm"
       $ button
@@ -74,24 +76,32 @@ accountPage User {spotifyUserName, friendCode, updateJobInfo = UpdateJobInfo {la
       QueuedAt _ -> loading
       _ -> case lastUpdateJobCompleted of
         Just t ->
-          p ! A.class_ "mb-2 text-sm text-gray-500 " $ do
-            "Last updated at " <> show t <> ". "
-            when (any (null . monthlyListeners) artists) "Some listener counts are still loading."
+          greyed $ do
+            "Followed artists last updated at " <> show t <> ". "
             br
-            href "/refresh" "Refresh."
+            warnListenersLoading artists
+            href "/refresh" "Check for new followed artists."
         Nothing -> loading
     artistTable artists
   where
-    loading = p ! A.class_ "mb-2 text-sm text-gray-500 " $ "Some artists are still loading. Refresh for a more recent view."
+    loading = greyed "Still loading followed artists. Refresh for a more recent view."
 
 -- TODO: add update status to comparison + warning about refreshes
-comparePage :: [Artist] -> [Artist] -> LText
-comparePage xs ys = container $ do
+comparePage :: (UpdateStatus, [Artist]) -> (UpdateStatus, [Artist]) -> LText
+comparePage (x, xs) (y, ys) = container $ do
   p "Artists you both follow, in ascending order by listeners:"
+  case x of
+    QueuedAt _ -> loading
+    _ -> case y of
+      QueuedAt _ -> loading
+      _ -> pass
+  greyed $ warnListenersLoading $ hashNub $ xs <> ys
   br
   artistTable $ intersect xs ys
   br
   href "/" "Go back"
+  where
+    loading = greyed "Still loading followed artists. Refresh for a more recent view."
 
 artistTable :: [Artist] -> Html
 artistTable artists =
@@ -115,8 +125,19 @@ artistTable artists =
     listeners :: HashMap Day Int -> Maybe Int
     listeners m = fmap snd $ viaNonEmpty head $ reverse $ sort $ HashMap.toList m
 
+warnListenersLoading :: [Artist] -> Html
+warnListenersLoading artists =
+  when (any (null . monthlyListeners) artists) $ do
+    "Some listener counts are still loading (" <> show numComplete <> " / " <> show (length artists) <> " completed)."
+    br
+  where
+    numComplete = length $ filter id $ map (not . null . monthlyListeners) artists
+
 href :: Text -> Html -> Html
 href url = a ! A.class_ "underline text-blue-700" ! A.href (textValue url)
 
 externalHref :: Text -> Html -> Html
 externalHref url = href url ! A.target "_blank"
+
+greyed :: Html -> Html
+greyed = p ! A.class_ "mb-2 text-sm text-gray-500"

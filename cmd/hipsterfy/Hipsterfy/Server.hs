@@ -28,7 +28,7 @@ handleHomePage :: (ScottyError e, MonadApp m) => ScottyT e m ()
 handleHomePage = get "/" $ do
   maybeUser <- getSession
   case maybeUser of
-    Just user@User {userID, updateJobInfo} -> do
+    Just user@User {..} -> do
       void $ enqueueUpdateUser userID
       followed <- getFollowedArtists userID
       updateStatus <- infoToStatus updateJobInfo
@@ -80,17 +80,20 @@ handleCompare = post "/compare" $ do
     Nothing -> redirect "/"
 
   -- Load followed artists.
+  -- TODO: load these in parallel
   yourArtists <- getFollowedArtists $ userID user
   friendArtists <- getFollowedArtists $ userID friend
 
   -- Render page.
-  html $ comparePage yourArtists friendArtists
+  yourStatus <- infoToStatus $ updateJobInfo user
+  friendStatus <- infoToStatus $ updateJobInfo friend
+  html $ comparePage (yourStatus, yourArtists) (friendStatus, friendArtists)
 
 handleForceRefreshUpdates :: (ScottyError e, MonadApp m) => ScottyT e m ()
 handleForceRefreshUpdates = get "/refresh" $ do
   user <- getSession
   case user of
-    Just User {userID} -> void $ forceEnqueueUpdateUser userID
+    Just User {..} -> void $ forceEnqueueUpdateUser userID
     _ -> pass
   redirect "/"
 

@@ -9,14 +9,11 @@ module Hipsterfy.Application
     Faktory (..),
     makeFaktory,
     makeZipkin,
-    makeHTTPURI,
-    withPathPiece,
     runAsContainer,
   )
 where
 
 import Control.Concurrent (myThreadId, throwTo)
-import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Trace (TraceT)
 import Data.Aeson (FromJSON)
 import Database.PostgreSQL.Simple (Connection, connectPostgreSQL)
@@ -33,7 +30,6 @@ import System.Exit (ExitCode (ExitSuccess))
 import System.IO (BufferMode (NoBuffering), hSetBuffering)
 import System.Posix (Handler (Catch))
 import System.Posix.Signals (installHandler, softwareTermination)
-import Text.URI (Authority (..), URI (..), emptyURI, mkHost, mkPathPiece, mkScheme)
 
 data Faktory = Faktory
   { client :: Client,
@@ -44,7 +40,6 @@ data Config = Config
   { postgres :: Connection,
     faktory :: Faktory,
     zipkin :: Zipkin,
-    address :: URI,
     spotifyApp :: SpotifyApp
   }
 
@@ -64,7 +59,7 @@ makeFaktory host password port = do
   client <- liftIO $ newClient faktorySettings Nothing
   let runWorker config queue action =
         Faktory.runWorker faktorySettings {settingsQueue = queue} $ runApp config . action
-  return Faktory {client, runWorker}
+  return Faktory {..}
   where
     faktorySettings = makeFaktorySettings host password port
 
@@ -88,33 +83,6 @@ makeZipkin host port =
         settingsHostname = Just $ toString host,
         settingsPort = Just $ fromInteger $ toInteger port
       }
-
-makeHTTPURI :: (MonadThrow m) => Text -> Int -> m URI
-makeHTTPURI host port = do
-  s <- mkScheme "http"
-  h <- mkHost host
-  return
-    emptyURI
-      { uriScheme = Just s,
-        uriAuthority =
-          Right
-            Authority
-              { authUserInfo = Nothing,
-                authHost = h,
-                authPort =
-                  if port == 80
-                    then Nothing
-                    else Just $ fromInteger $ toInteger port
-              },
-        uriPath = Nothing
-      }
-
-withPathPiece :: (MonadThrow m) => URI -> Text -> m URI
-withPathPiece uri piece = do
-  path <- mkPathPiece piece
-  return $ case uriPath uri of
-    Just (t, ph :| ps) -> uri {uriPath = Just (t, ph :| (ps <> [path]))}
-    Nothing -> uri {uriPath = Just (False, path :| [])}
 
 type MonadApp m = (MonadIO m, MonadTrace m, MonadReader Config m)
 

@@ -22,9 +22,9 @@ import Options.Applicative
 import Relude
 
 data Options = Options
-  { clientID :: Text,
+  { pgConn :: Text,
+    clientID :: Text,
     clientSecret :: Text,
-    pgConn :: Text,
     faktoryHost :: Text,
     faktoryPort :: Int,
     faktoryPassword :: Text,
@@ -41,9 +41,9 @@ opts =
   where
     options =
       Options
-        <$> strOption (long "client_id")
-        <*> strOption (long "client_secret")
-        <*> strOption (long "db")
+        <$> strOption (long "db")
+        <*> strOption (long "spotify_client_id")
+        <*> strOption (long "spotify_client_secret")
         <*> strOption (long "faktory_host")
         <*> option auto (long "faktory_port")
         <*> strOption (long "faktory_password")
@@ -56,8 +56,8 @@ runWorkers Options {..} = do
   faktory@Faktory {runWorker} <- makeFaktory faktoryHost faktoryPassword faktoryPort
   zipkin <- makeZipkin zipkinHost zipkinPort
 
-  let spotifyApp = SpotifyApp {clientID, clientSecret, redirectURI = error "runWorkers: impossible: redirectURI never used"}
-  let config = Config {postgres, faktory, zipkin, address = error "runWorkers: impossible: address never used", spotifyApp}
+  let spotifyApp = SpotifyApp {redirectURI = error "runWorkers: impossible: redirectURI never used", ..}
+  let config = Config {..}
 
   caps <- getNumCapabilities
   putStrLn $ "Starting workers (" <> show caps <> " threads)."
