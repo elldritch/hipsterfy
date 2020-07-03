@@ -38,6 +38,7 @@ handleRoute method routePattern action =
     $ rootSpanWith (spanKind "ROUTE") alwaysSampled spanName
     $ do
       req <- request
+      -- TODO: can I trace the entire ScottyT stack at the WAI level instead?
       tag "http.requestIP" $ show $ remoteHost req
       tag "http.path" $ decodeUtf8 $ rawPathInfo req
       tag "http.route" routePattern

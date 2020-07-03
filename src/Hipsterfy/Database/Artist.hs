@@ -11,7 +11,8 @@ module Hipsterfy.Database.Artist
     artistTable,
     ArtistListeners,
     ArtistListenersT (..),
-    ArtistListenersF,
+    ArtistListenersReadF,
+    ArtistListenersWriteF,
     pArtistListeners,
     artistListenersTable,
   )
@@ -82,18 +83,20 @@ data ArtistListenersT aid t i = ArtistListenersT
 
 type ArtistListeners = ArtistListenersT ArtistID UTCTime Int
 
-type ArtistListenersF = ArtistListenersT ArtistIDReadF (Field SqlTimestamptz) (Field SqlInt4)
+type ArtistListenersReadF = ArtistListenersT ArtistIDReadF (Field SqlTimestamptz) (Field SqlInt4)
+
+type ArtistListenersWriteF = ArtistListenersT ArtistIDReadF (Maybe (Field SqlTimestamptz)) (Field SqlInt4)
 
 $(makeAdaptorAndInstance "pArtistListeners" ''ArtistListenersT)
 
-artistListenersColumns :: TableFields ArtistListenersF ArtistListenersF
+artistListenersColumns :: TableFields ArtistListenersWriteF ArtistListenersReadF
 artistListenersColumns =
   pArtistListeners
     ArtistListenersT
       { listenersArtistID = pArtistID $ ArtistIDT $ required "spotify_artist_id",
-        createdAt = required "created_at",
+        createdAt = optional "created_at",
         monthlyListeners = required "monthly_listeners"
       }
 
-artistListenersTable :: Table ArtistListenersF ArtistListenersF
+artistListenersTable :: Table ArtistListenersWriteF ArtistListenersReadF
 artistListenersTable = table "spotify_artist_listeners" artistListenersColumns

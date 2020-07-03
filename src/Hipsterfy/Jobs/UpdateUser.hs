@@ -12,7 +12,7 @@ import Data.Aeson (FromJSON, ToJSON)
 import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue)
 import Hipsterfy.Application (Config (..), Faktory (..), MonadApp)
-import Hipsterfy.Artist (Artist (..), createArtistIfNotExists)
+import Hipsterfy.Artist (Artist (..), createArtist)
 import Hipsterfy.Jobs (UpdateStatus (..), infoToStatus)
 import Hipsterfy.Jobs.UpdateArtist (enqueueUpdateArtist)
 import Hipsterfy.Spotify
@@ -76,7 +76,7 @@ handleUpdateUser UpdateUserJob {userID} = do
 
   -- Create artists.
   let spotifyArtists = hashNub $ followedArtists ++ trackArtists ++ albumArtists
-  artists <- mapM createArtistIfNotExists spotifyArtists
+  artists <- mapM createArtist spotifyArtists
   let artistIDs = map artistID artists
 
   -- Update followed artists.

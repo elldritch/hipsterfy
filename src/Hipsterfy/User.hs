@@ -21,28 +21,15 @@ where
 
 import Control.Arrow (returnA)
 import Data.Aeson (FromJSON, ToJSON)
-import qualified Data.HashMap.Strict as HashMap
-import Data.Profunctor.Product (p2)
-import Data.Time (UTCTime, getCurrentTime, utctDay)
+import Data.Time (UTCTime (..), getCurrentTime)
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import Hipsterfy.Application (Config (..), MonadApp)
-import Hipsterfy.Artist (Artist (..), ArtistID, fromDatabaseArtistID, toDatabaseArtistID)
+import Hipsterfy.Artist (Artist (..), ArtistID, ArtistListenersAgg, ArtistListenersAggF, getArtistsBy, toArtist, toDatabaseArtistID)
 import Hipsterfy.Database (QueryParameters, runDelete, runInsert, runInsertOne, runSelect, runSelectOne, runTransaction, runUpdate)
-import Hipsterfy.Database.Artist
-  ( ArtistIDT (..),
-    ArtistListenersF,
-    ArtistListenersT (..),
-    ArtistReadF,
-    ArtistT (..),
-    artistListenersTable,
-    artistTable,
-    pArtist,
-    pArtistID,
-    pArtistListeners,
-  )
+import Hipsterfy.Database.Artist (ArtistReadF, ArtistT (..))
 import qualified Hipsterfy.Database.Artist as D (Artist)
-import Hipsterfy.Database.Jobs (UpdateJobInfoF, UpdateJobInfoT (..), pUpdateJobInfo)
+import Hipsterfy.Database.Jobs (UpdateJobInfoF, UpdateJobInfoT (..))
 import Hipsterfy.Database.User
   ( SpotifyCredentialsT (..),
     SpotifyOAuthRequest,
@@ -59,14 +46,19 @@ import Hipsterfy.Database.User
   )
 import qualified Hipsterfy.Database.User as D (User, UserID)
 import Hipsterfy.Jobs (UpdateJobInfo (..))
-import Hipsterfy.Spotify (SpotifyArtist (..), SpotifyUser (..), SpotifyUserID (..), getSpotifyUser)
-import Hipsterfy.Spotify.Auth (Scope, SpotifyCredentials (..), authorizationURL, requestAccessTokenFromAuthorizationCode, requestAccessTokenFromRefreshToken)
-import Opaleye.Aggregate (aggregate, arrayAgg, groupBy)
+import Hipsterfy.Spotify (SpotifyUser (..), SpotifyUserID (..), getSpotifyUser)
+import Hipsterfy.Spotify.Auth
+  ( Scope,
+    SpotifyCredentials (..),
+    authorizationURL,
+    requestAccessTokenFromAuthorizationCode,
+    requestAccessTokenFromRefreshToken,
+  )
 import Opaleye.Field (Field, null, toNullable)
 import Opaleye.Manipulation (Delete (..), Insert (..), Update (..), rCount, rReturning, updateEasy)
 import Opaleye.Operators ((.==), (.===), restrict)
 import Opaleye.Select (Select)
-import Opaleye.SqlTypes (SqlArray, SqlBool, SqlInt4, SqlTimestamptz, sqlInt4, sqlStrictText, sqlUTCTime)
+import Opaleye.SqlTypes (SqlBool, sqlInt4, sqlStrictText, sqlUTCTime)
 import Opaleye.Table (selectTable)
 import Relude hiding (null)
 import Test.RandomStrings (randomASCII, randomWord)
@@ -107,11 +99,11 @@ fromDatabaseUserID (UserIDT i) = UserID i
 
 -- Named parameter sets for tracing.
 
+instance QueryParameters User
+
 newtype UserIDParam = UserIDParam {userID :: UserID} deriving (Generic)
 
 instance QueryParameters UserIDParam
-
-instance QueryParameters User
 
 newtype SpotifyUserIDParam = SpotifyUserIDParam {spotifyUserID :: SpotifyUserID} deriving (Generic)
 
@@ -260,6 +252,7 @@ getUserByID userID = do
   where
     makeSelect :: UserIDParam -> Select UserReadF
     makeSelect UserIDParam {userID = paramUID} =
+      -- TODO: can I factor out this "equal to attribute" pattern?
       getUserBy (\UserT {userID = rowUID} -> rowUID .=== toDatabaseUserID paramUID)
 
 getUserBySpotifyID :: (MonadApp m) => SpotifyUserID -> m (Maybe User)
@@ -315,75 +308,21 @@ refreshCredentialsIfNeeded userID creds@SpotifyCredentials {expiration} = do
           uReturning = rCount
         }
 
-type ArtistListenersArrayAggF =
-  ArtistListenersT
-    (ArtistIDT (Field (SqlArray SqlInt4)))
-    (Field (SqlArray SqlTimestamptz))
-    (Field (SqlArray SqlInt4))
-
-type ArtistListenersArrayAgg = ArtistListenersT (ArtistIDT [Int]) [UTCTime] [Int]
-
 getFollowedArtists :: (MonadApp m) => UserID -> m [Artist]
 getFollowedArtists userID = do
-  (artistAndAggListeners :: [(D.Artist, ArtistListenersArrayAgg)]) <-
+  (artistAndAggListeners :: [(D.Artist, ArtistListenersAgg)]) <-
     runSelect "getFollowedArtists" makeSelect $ UserIDParam userID
   return $ map toArtist artistAndAggListeners
   where
-    makeSelect :: UserIDParam -> Select (ArtistReadF, ArtistListenersArrayAggF)
-    makeSelect (UserIDParam paramUID) = aggregateListeners getFollowedArtistsAndListeners
-      where
-        getFollowedArtistsAndListeners :: Select (ArtistReadF, ArtistListenersF)
-        getFollowedArtistsAndListeners = proc () -> do
-          UserT {userID = rowUID} <- selectTable userTable -< ()
-          UserArtistFollowT {followUserID, followArtistID} <- selectTable userArtistFollowTable -< ()
-          artist@ArtistT {artistID = rowAID} <- selectTable artistTable -< ()
-          listeners@ArtistListenersT {listenersArtistID = listenerAID} <- selectTable artistListenersTable -< ()
-
-          restrict -< rowUID .=== toDatabaseUserID paramUID
-          restrict -< rowUID .=== followUserID
-          restrict -< rowAID .=== followArtistID
-          restrict -< rowAID .=== listenerAID
-
-          returnA -< (artist, listeners)
-        aggregateListeners :: Select (ArtistReadF, ArtistListenersF) -> Select (ArtistReadF, ArtistListenersArrayAggF)
-        aggregateListeners =
-          aggregate
-            ( p2
-                ( pArtist
-                    ArtistT
-                      { artistID = pArtistID $ ArtistIDT groupBy,
-                        name = groupBy,
-                        spotifyArtistID = groupBy,
-                        spotifyURL = groupBy,
-                        updateJobInfo =
-                          pUpdateJobInfo $
-                            UpdateJobInfoT
-                              { lastUpdateJobSubmitted = groupBy,
-                                lastUpdateJobCompleted = groupBy
-                              }
-                      },
-                  pArtistListeners
-                    ArtistListenersT
-                      { listenersArtistID = pArtistID $ ArtistIDT arrayAgg,
-                        createdAt = arrayAgg,
-                        monthlyListeners = arrayAgg
-                      }
-                )
-            )
-    toArtist :: (D.Artist, ArtistListenersArrayAgg) -> Artist
-    toArtist (ArtistT {..}, ArtistListenersT {..}) =
-      let UpdateJobInfoT {..} = updateJobInfo
-       in Artist
-            { artistID = fromDatabaseArtistID artistID,
-              spotifyArtist =
-                SpotifyArtist
-                  { spotifyArtistID,
-                    spotifyURL,
-                    name
-                  },
-              updateJobInfo = UpdateJobInfo {lastUpdateJobCompleted, lastUpdateJobSubmitted},
-              monthlyListeners = HashMap.fromList $ zip (utctDay <$> createdAt) monthlyListeners
-            }
+    makeSelect :: UserIDParam -> Select (ArtistReadF, ArtistListenersAggF)
+    -- makeSelect (UserIDParam paramUID) = aggregateListeners getFollowedArtistsAndListeners
+    makeSelect (UserIDParam paramUID) =
+      getArtistsBy $ proc ArtistT {artistID = rowAID} -> do
+        UserT {userID = rowUID} <- selectTable userTable -< ()
+        UserArtistFollowT {followUserID, followArtistID} <- selectTable userArtistFollowTable -< ()
+        restrict -< rowUID .=== toDatabaseUserID paramUID
+        restrict -< rowUID .=== followUserID
+        restrict -< rowAID .=== followArtistID
 
 setFollowedArtists :: (MonadApp m) => UserID -> [ArtistID] -> m ()
 setFollowedArtists userID artistIDs = do
@@ -444,6 +383,7 @@ setUpdateCompleted userID = do
         { uTable = userTable,
           uUpdateWith = updateEasy $
             \u@UserT {updateJobInfo} ->
+              -- TODO: how do I factor out this record update? Lenses?
               (u {updateJobInfo = updateJobInfo {lastUpdateJobCompleted = toNullable $ sqlUTCTime jobCompleted} :: UpdateJobInfoF} :: UserReadF),
           uWhere = \UserT {userID = rowUID} -> rowUID .=== toDatabaseUserID paramUID,
           uReturning = rCount

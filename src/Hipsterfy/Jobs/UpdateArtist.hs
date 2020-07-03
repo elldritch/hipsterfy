@@ -9,7 +9,8 @@ import Data.Aeson (FromJSON, ToJSON)
 import Faktory.Job (perform, queue)
 import Faktory.Settings (Queue (Queue))
 import Hipsterfy.Application (Config (..), Faktory (..), MonadApp)
-import Hipsterfy.Artist (ArtistID, UpdateStatus (..), getArtist, getUpdateStatus, refreshArtistInsights, setUpdateCompleted, setUpdateSubmitted)
+import Hipsterfy.Artist (Artist (..), ArtistID, getArtistByID, refreshArtistInsights, setUpdateCompleted, setUpdateSubmitted)
+import Hipsterfy.Jobs (UpdateStatus (..), infoToStatus)
 import Hipsterfy.Spotify.Auth (getAnonymousBearerToken)
 import Relude
 
@@ -28,7 +29,11 @@ instance ToJSON UpdateArtistJob
 enqueueUpdateArtist :: (MonadApp m) => ArtistID -> m ()
 enqueueUpdateArtist artistID = do
   Config {faktory = Faktory {client}} <- ask
-  status <- getUpdateStatus artistID
+  maybeArtist <- getArtistByID artistID
+  Artist {updateJobInfo} <- case maybeArtist of
+    Just artist -> return artist
+    Nothing -> error $ "enqueueUpdateArtist: could not find artist with ID " <> show artistID
+  status <- infoToStatus updateJobInfo
   case status of
     NeedsUpdate -> do
       setUpdateSubmitted artistID
@@ -37,7 +42,7 @@ enqueueUpdateArtist artistID = do
 
 handleUpdateArtist :: (MonadApp m) => UpdateArtistJob -> m ()
 handleUpdateArtist UpdateArtistJob {artistID} = do
-  maybeArtist <- getArtist artistID
+  maybeArtist <- getArtistByID artistID
   artist <- case maybeArtist of
     Just a -> return a
     Nothing -> error $ "handleUpdateArtist: could not find artist with ID " <> show artistID

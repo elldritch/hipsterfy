@@ -46,7 +46,6 @@ library
   exposed-modules:
     Hipsterfy.Application
     Hipsterfy.Artist
-    Hipsterfy.Artist2
     Hipsterfy.Database
     Hipsterfy.Database.Artist
     Hipsterfy.Database.Jobs
