@@ -1,5 +1,5 @@
 # Build application.
-FROM hipsterfy-base AS builder
+FROM docker.pkg.github.com/liftm/hipsterfy/hipsterfy-base:sha-15c9c5c AS builder
 
 # Build the application.
 RUN mkdir -p /artifacts
