@@ -73,35 +73,30 @@ accountPage User {updateJobInfo = UpdateJobInfo {..}, ..} status artists = conta
       $ "Enter"
     h2 ! A.class_ "text-2xl mt-12 mb-2" $ "Artists you follow"
     case status of
-      QueuedAt _ -> loading
+      QueuedAt _ -> loadingArtists
       _ -> case lastUpdateJobCompleted of
         Just t ->
           greyed $ do
             "Followed artists last updated at " <> show t <> ". "
             br
-            warnListenersLoading artists
+            loadingListeners artists
             href "/refresh" "Check for new followed artists."
-        Nothing -> loading
+        Nothing -> loadingArtists
     artistTable artists
-  where
-    loading = greyed "Still loading followed artists. Refresh for a more recent view."
 
--- TODO: add update status to comparison + warning about refreshes
 comparePage :: (UpdateStatus, [Artist]) -> (UpdateStatus, [Artist]) -> LText
 comparePage (x, xs) (y, ys) = container $ do
   p "Artists you both follow, in ascending order by listeners:"
   case x of
-    QueuedAt _ -> loading
+    QueuedAt _ -> loadingArtists
     _ -> case y of
-      QueuedAt _ -> loading
+      QueuedAt _ -> loadingArtists
       _ -> pass
-  greyed $ warnListenersLoading $ hashNub $ xs <> ys
+  greyed $ loadingListeners $ hashNub $ xs <> ys
   br
   artistTable $ intersect xs ys
   br
   href "/" "Go back"
-  where
-    loading = greyed "Still loading followed artists. Refresh for a more recent view."
 
 artistTable :: [Artist] -> Html
 artistTable artists =
@@ -125,8 +120,14 @@ artistTable artists =
     listeners :: HashMap Day Int -> Maybe Int
     listeners m = fmap snd $ viaNonEmpty head $ reverse $ sort $ HashMap.toList m
 
-warnListenersLoading :: [Artist] -> Html
-warnListenersLoading artists =
+loadingArtists :: Html
+loadingArtists = greyed $ do
+  "Checking for more followed artists. This can take a couple minutes."
+  br
+  "Refresh for a more recent view."
+
+loadingListeners :: [Artist] -> Html
+loadingListeners artists =
   when (any (null . monthlyListeners) artists) $ do
     "Some listener counts are still loading (" <> show numComplete <> " / " <> show (length artists) <> " completed)."
     br

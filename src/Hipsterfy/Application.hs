@@ -57,6 +57,7 @@ makePostgres = liftIO . connectPostgreSQL . encodeUtf8
 makeFaktory :: (MonadIO m) => Text -> Text -> Int -> m Faktory
 makeFaktory host password port = do
   client <- liftIO $ newClient faktorySettings Nothing
+  -- TODO: why do all workers have the same name in the Faktory dashboard?
   let runWorker config queue action =
         Faktory.runWorker faktorySettings {settingsQueue = queue} $ runApp config . action
   return Faktory {..}
