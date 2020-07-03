@@ -23,7 +23,7 @@ Your followed artists are a combination of artists you've followed, artists of t
 
 ### Running on raw metal
 
-#### Create and run the database
+#### Build and run the database
 
 Hipsterfy provides a Dockerfile for the database image for convenience. You may also choose to run your own Postgres instance. The schema migrations are in [`./db`](./db).
 
@@ -124,12 +124,6 @@ cabal run hipsterfy-worker -- \
 
 ### Running with `docker-compose`
 
-#### Building the base image
-
-```
-sudo docker build -f ./images/hipsterfy-base/Dockerfile -t hipsterfy-base .
-```
-
 #### Starting the containers
 
 Docker Compose will start all containers for you. Make sure to set environment variables for configuration.
@@ -147,9 +141,24 @@ sudo docker-compose -p hipsterfy-dev up --build
 
 Docker Compose is useful for fully tearing down and setting up new instances for testing. You can completely tear down a Docker Compose deployment with:
 
-```
+```bash
 sudo docker-compose -p hipsterfy-dev down --volumes
 ```
+
+#### Building the base image locally
+
+The application Docker image uses a separate base image with built dependencies for caching purposes. Normally, you can pull this image off of the public image on the GitHub Package Registry.
+
+If you'd like to build this image locally, you can also run:
+
+```bash
+sudo docker build \
+  -f ./images/hipsterfy-base/Dockerfile \
+  -t docker.pkg.github.com/liftm/hipsterfy/hipsterfy-base:sha-15c9c5c \
+  .
+```
+
+Make sure you tag the image correctly! The image tag name must line up with the base `FROM` image used by `images/hipsterfy/Dockerfile`.
 
 ### Generating documentation
 
