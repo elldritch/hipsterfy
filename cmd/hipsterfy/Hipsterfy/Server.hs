@@ -13,7 +13,7 @@ import Hipsterfy.Application (MonadApp)
 import Hipsterfy.Jobs (infoToStatus)
 import Hipsterfy.Jobs.UpdateUser (enqueueUpdateUser, forceEnqueueUpdateUser)
 import Hipsterfy.Server.Handlers (get, post)
-import Hipsterfy.Server.Pages (accountPage, comparePage, loginPage, PageError(FriendCodeError))
+import Hipsterfy.Server.Pages (accountPage, comparePage, loginPage, friendErrorPage)
 import Hipsterfy.Server.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify.Auth (scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
 import Hipsterfy.User (User (..), createOAuthRedirect, createUser, getFollowedArtists, getUserByFriendCode)
@@ -84,8 +84,8 @@ handleCompare = post "/compare" $ do
       -- Render page.
       yourStatus <- infoToStatus $ updateJobInfo user
       friendStatus <- infoToStatus $ updateJobInfo f
-      html $ comparePage $ Right ((yourStatus, yourArtists), (friendStatus, friendArtists))
-    Nothing -> do html $ comparePage $ Left FriendCodeError 
+      html $ comparePage (yourStatus, yourArtists) (friendStatus, friendArtists)
+    Nothing -> do html $ friendErrorPage
     
 
 handleForceRefreshUpdates :: (ScottyError e, MonadApp m) => ScottyT e m ()
