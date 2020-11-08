@@ -91,6 +91,7 @@ Make sure to populate the flags with your own:
 - Spotify app client ID, secret, and redirect URI. (Make sure your configured redirect URI is the same as the redirect URI in Spotify, including protocol and port! Otherwise, Spotify will refuse to redirect authorizing users, or will redirect incorrectly.)
 - Postgres database connection string.
 - Faktory host, port, and password.
+- Tracing backend host and port.
 
 ```bash
 cabal run hipsterfy -- \
@@ -102,6 +103,8 @@ cabal run hipsterfy -- \
   --faktory_host localhost \
   --faktory_port 7419 \
   --faktory_password hunter2
+  --zipkin_host localhost
+  --zipkin_port 9411
 ```
 
 #### Build and run the worker
@@ -115,8 +118,8 @@ Make sure to populate the flags with your own:
 ```bash
 cabal run hipsterfy-worker -- \
   --db 'postgresql://hipsterfy:hunter2@localhost:5432' \
-  --spotify_client_id ea880280c7cc4427912e0ef932a57b68 \
-  --spotify_client_secret 93206bec68d940e791f7d1cf26eeedc5 \
+  --spotify_client_id XXXX \
+  --spotify_client_secret XXXX \
   --faktory_host localhost \
   --faktory_port 7419 \
   --faktory_password hunter2
