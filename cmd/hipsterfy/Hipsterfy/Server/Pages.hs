@@ -1,5 +1,4 @@
-module Hipsterfy.Server.Pages (loginPage, accountPage, comparePage) where
-
+module Hipsterfy.Server.Pages (loginPage, accountPage, comparePage, PageError(FriendCodeError)) where
 import qualified Data.HashMap.Strict as HashMap
 import Data.List (intersect)
 import Data.List.Split (chunksOf)
@@ -13,6 +12,8 @@ import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Blaze.Html5 hiding (body, contents, head, map)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
+
+data PageError = FriendCodeError
 
 render :: Html -> LText
 render body = renderHtml $ docTypeHtml $ do
@@ -84,19 +85,23 @@ accountPage User {updateJobInfo = UpdateJobInfo {..}, ..} status artists = conta
         Nothing -> loadingArtists
     artistTable artists
 
-comparePage :: (UpdateStatus, [Artist]) -> (UpdateStatus, [Artist]) -> LText
-comparePage (x, xs) (y, ys) = container $ do
-  p "Artists you both follow, in ascending order by listeners:"
-  case x of
-    QueuedAt _ -> loadingArtists
-    _ -> case y of
-      QueuedAt _ -> loadingArtists
-      _ -> pass
-  greyed $ loadingListeners $ hashNub $ xs <> ys
-  br
-  artistTable $ intersect xs ys
-  br
-  href "/" "Go back"
+comparePage :: Either PageError ((UpdateStatus, [Artist]), (UpdateStatus, [Artist])) -> LText
+comparePage errorOrCompare = container $ do
+  case errorOrCompare of
+    Left FriendCodeError ->
+      do div ! A.class_ "self-center mt-5 text-red-700" $ "Error: This is an invalid friend code."
+    Right ((x, xs),(y, ys)) -> do
+        p "Artists you both follow, in ascending order by listeners:"
+        case x of
+          QueuedAt _ -> loadingArtists
+          _ -> case y of
+            QueuedAt _ -> loadingArtists
+            _ -> pass
+        greyed $ loadingListeners $ hashNub $ xs <> ys
+        br
+        artistTable $ intersect xs ys
+        br
+        href "/" "Go back"
 
 artistTable :: [Artist] -> Html
 artistTable artists =

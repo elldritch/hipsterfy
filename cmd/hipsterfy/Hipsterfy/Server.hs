@@ -13,7 +13,7 @@ import Hipsterfy.Application (MonadApp)
 import Hipsterfy.Jobs (infoToStatus)
 import Hipsterfy.Jobs.UpdateUser (enqueueUpdateUser, forceEnqueueUpdateUser)
 import Hipsterfy.Server.Handlers (get, post)
-import Hipsterfy.Server.Pages (accountPage, comparePage, loginPage)
+import Hipsterfy.Server.Pages (accountPage, comparePage, loginPage, PageError(FriendCodeError))
 import Hipsterfy.Server.Session (endSession, getSession, startSession)
 import Hipsterfy.Spotify.Auth (scopeUserFollowRead, scopeUserLibraryRead, scopeUserTopRead)
 import Hipsterfy.User (User (..), createOAuthRedirect, createUser, getFollowedArtists, getUserByFriendCode)
@@ -74,20 +74,19 @@ handleCompare = post "/compare" $ do
   -- Check that the friend code is valid.
   friendCode <- param "friend-code"
   maybeFriend <- getUserByFriendCode friendCode
-  friend <- case maybeFriend of
-    Just f -> return f
-    -- TODO: display an error message for invalid friend codes.
-    Nothing -> redirect "/"
+  case maybeFriend of
+    Just f -> do 
+      -- Load followed artists.
+      -- TODO: load these in parallel
+      yourArtists <- getFollowedArtists $ userID user
+      friendArtists <- getFollowedArtists $ userID f
 
-  -- Load followed artists.
-  -- TODO: load these in parallel
-  yourArtists <- getFollowedArtists $ userID user
-  friendArtists <- getFollowedArtists $ userID friend
-
-  -- Render page.
-  yourStatus <- infoToStatus $ updateJobInfo user
-  friendStatus <- infoToStatus $ updateJobInfo friend
-  html $ comparePage (yourStatus, yourArtists) (friendStatus, friendArtists)
+      -- Render page.
+      yourStatus <- infoToStatus $ updateJobInfo user
+      friendStatus <- infoToStatus $ updateJobInfo f
+      html $ comparePage $ Right ((yourStatus, yourArtists), (friendStatus, friendArtists))
+    Nothing -> do html $ comparePage $ Left FriendCodeError 
+    
 
 handleForceRefreshUpdates :: (ScottyError e, MonadApp m) => ScottyT e m ()
 handleForceRefreshUpdates = get "/refresh" $ do
