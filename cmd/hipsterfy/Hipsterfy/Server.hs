@@ -75,17 +75,17 @@ handleCompare = post "/compare" $ do
   friendCode <- param "friend-code"
   maybeFriend <- getUserByFriendCode friendCode
   case maybeFriend of
-    Just f -> do 
+    Just friend -> do 
       -- Load followed artists.
       -- TODO: load these in parallel
       yourArtists <- getFollowedArtists $ userID user
-      friendArtists <- getFollowedArtists $ userID f
+      friendArtists <- getFollowedArtists $ userID friend
 
       -- Render page.
       yourStatus <- infoToStatus $ updateJobInfo user
-      friendStatus <- infoToStatus $ updateJobInfo f
+      friendStatus <- infoToStatus $ updateJobInfo friend
       html $ comparePage (yourStatus, yourArtists) (friendStatus, friendArtists)
-    Nothing -> do html $ friendErrorPage
+    Nothing -> html $ friendErrorPage
     
 
 handleForceRefreshUpdates :: (ScottyError e, MonadApp m) => ScottyT e m ()

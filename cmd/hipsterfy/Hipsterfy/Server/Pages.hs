@@ -98,7 +98,7 @@ comparePage (x, xs) (y, ys) = container $ do
   href "/" "Go back"
 
 friendErrorPage :: LText
-friendErrorPage = container $ do div ! A.class_ "self-center mt-5 text-red-700" $ "Error: This is an invalid friend code."
+friendErrorPage = container $ div ! A.class_ "self-center mt-5 text-red-700" $ "Error: This is an invalid friend code."
 
 artistTable :: [Artist] -> Html
 artistTable artists =
