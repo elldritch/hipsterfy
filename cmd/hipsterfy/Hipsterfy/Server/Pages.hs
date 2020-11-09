@@ -1,5 +1,4 @@
-module Hipsterfy.Server.Pages (loginPage, accountPage, comparePage) where
-
+module Hipsterfy.Server.Pages (loginPage, accountPage, comparePage, friendErrorPage) where
 import qualified Data.HashMap.Strict as HashMap
 import Data.List (intersect)
 import Data.List.Split (chunksOf)
@@ -97,6 +96,9 @@ comparePage (x, xs) (y, ys) = container $ do
   artistTable $ intersect xs ys
   br
   href "/" "Go back"
+
+friendErrorPage :: LText
+friendErrorPage = container $ div ! A.class_ "self-center mt-5 text-red-700" $ "Error: This is an invalid friend code."
 
 artistTable :: [Artist] -> Html
 artistTable artists =
